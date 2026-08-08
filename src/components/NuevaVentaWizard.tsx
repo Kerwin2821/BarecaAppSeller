@@ -1,138 +1,112 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { catalogoApi, cascoApi, type CascoPlan } from '../lib/endpoints'
+import { rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora } from '../lib/endpoints'
 import { mensajeDeError } from '../lib/api'
-import { moneda } from '../lib/formato'
+import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
-import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
+import { Alerta, Boton, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
 
-type Ramo = 'rcv' | 'casco'
+type TipoSeguro = 'rcv' | 'funerario'
 
-interface Vehiculo {
-  marcaId: string | null
-  marcaNombre?: string
-  modeloId: string | null
-  modeloNombre?: string
-  versionId: string | null
-  versionNombre?: string
-  versionAnioId: string | null // hoja del catálogo (cat_version_anio) que se guarda en la póliza
-  anio?: number
-  placa: string
-  uso: 'PARTICULAR' | 'COMERCIAL'
-}
+const PASOS = ['Cotización', 'Datos del Cliente', 'Conductor', 'Registro de Pago']
 
-const PASOS = ['Vehículo', 'Plan', 'Cliente', 'Pago']
+/** Tarjetas de tipo de seguro (como la web: RCV y Funerario activos; el resto "Próximamente"). */
+const TIPOS: { valor: TipoSeguro | null; emoji: string; texto: string; activo: boolean }[] = [
+  { valor: 'rcv', emoji: '🚗', texto: 'Vehículos (RCV)', activo: true },
+  { valor: 'funerario', emoji: '🕊️', texto: 'Servicio Funerario', activo: true },
+  { valor: null, emoji: '🚙', texto: 'Auto (Casco)', activo: false },
+  { valor: null, emoji: '❤️', texto: 'Salud y Vida', activo: false },
+  { valor: null, emoji: '🏠', texto: 'Hogar y Comercio', activo: false },
+]
 
-const aOpc = (xs: { id: string; nombre: string }[]): OpcionDrop[] =>
-  xs.map((x) => ({ valor: x.id, texto: x.nombre }))
+/** Información adicional de riesgo (toggles que ajustan el precio). */
+const RIESGOS = [
+  { id: 'inflamables', texto: 'Para vehículos destinados al transporte de materiales inflamables, corrosivos, tóxicos o explosivos' },
+  { id: 'oficiales', texto: 'Para vehículos de cuerpos policiales, bomberos, ambulancia, empresas de seguridad o transporte de fondos' },
+  { id: 'remolque', texto: 'Para vehículos que remolquen embarcaciones, motocicletas, casas rodantes, equipos deportivos u otros remolques' },
+]
+
+const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionDrop[] =>
+  xs.map((x) => ({ valor: id(x), texto: txt(x) }))
 
 /**
- * Asistente de venta. Réplica del new-sale-wizard del portal. El paso de
- * Vehículo usa el catálogo real (cascada marca→modelo→versión→año, endpoints
- * públicos). Los pasos Plan/Cliente/Pago se completan en las siguientes
- * iteraciones (tarifa/prima, staging de cliente y pasarela de pago).
+ * Nueva Venta — flujo RCV real (réplica del quote-step del portal):
+ * tipo de seguro → aseguradora → clase + grupo de vehículo → info de riesgo →
+ * Cotizar Planes → selección de plan. Clase/grupo/aseguradora usan endpoints
+ * públicos; la cotización de planes (tarifa) requiere sesión.
  */
-export function NuevaVentaWizard({ ramo: ramoInicial, express = false }: { ramo: Ramo; express?: boolean }) {
+export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const insets = useSafeAreaInsets()
-  const [ramo, setRamo] = useState<Ramo>(ramoInicial)
   const [paso, setPaso] = useState(0)
-  const [veh, setVeh] = useState<Vehiculo>({
-    marcaId: null,
-    modeloId: null,
-    versionId: null,
-    versionAnioId: null,
-    placa: '',
-    uso: 'PARTICULAR',
-  })
 
-  const [marcas, setMarcas] = useState<OpcionDrop[]>([])
-  const [modelos, setModelos] = useState<OpcionDrop[]>([])
-  const [versiones, setVersiones] = useState<OpcionDrop[]>([])
-  const [anios, setAnios] = useState<OpcionDrop[]>([])
-  const [cargando, setCargando] = useState<{ [k: string]: boolean }>({})
+  const [tipo, setTipo] = useState<TipoSeguro | null>(null)
+  const [productos, setProductos] = useState<ProductoAseguradora[]>([])
+  const [productoId, setProductoId] = useState<string | null>(null)
+
+  const [clases, setClases] = useState<ClaseVehiculo[]>([])
+  const [grupos, setGrupos] = useState<GrupoVehiculo[]>([])
+  const [claseId, setClaseId] = useState<string | null>(null)
+  const [grupoId, setGrupoId] = useState<string | null>(null)
+  const [riesgos, setRiesgos] = useState<Record<string, boolean>>({})
+
+  const [planes, setPlanes] = useState<any[]>([])
+  const [planIdx, setPlanIdx] = useState<number | null>(null)
+
+  const [cargando, setCargando] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
-
-  // Planes de casco (paso Plan) + selección.
-  const [planes, setPlanes] = useState<CascoPlan[]>([])
-  const [planId, setPlanId] = useState<number | null>(null)
-
   const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
 
-  // Al entrar al paso Plan con Casco, carga los planes reales del vehículo.
+  // Aseguradoras (productos RCV) + clases al elegir RCV.
   useEffect(() => {
-    if (paso !== 1 || ramo !== 'casco' || !veh.versionAnioId) return
-    let vivo = true
+    if (tipo !== 'rcv') return
+    setCarga('prod', true)
+    Promise.all([rcvApi.productos().catch(() => []), rcvApi.clases().catch(() => [])])
+      .then(([prods, cls]) => {
+        setProductos((prods ?? []).filter((p) => /RCV/i.test(p.nombre)))
+        setClases(cls ?? [])
+      })
+      .catch((e) => setError(mensajeDeError(e)))
+      .finally(() => setCarga('prod', false))
+  }, [tipo])
+
+  const elegirClase = useCallback((id: string) => {
+    setClaseId(id)
+    setGrupoId(null)
+    setGrupos([])
+    setPlanes([])
+    setPlanIdx(null)
+    setCarga('grupos', true)
+    rcvApi
+      .gruposPorClase(id)
+      .then((r) => setGrupos((Array.isArray(r) ? r : r.data) ?? []))
+      .catch((e) => setError(mensajeDeError(e)))
+      .finally(() => setCarga('grupos', false))
+  }, [])
+
+  const producto = useMemo(() => productos.find((p) => p.productoId === productoId), [productos, productoId])
+
+  const cotizar = useCallback(async () => {
+    if (!grupoId || !producto) return
     setCarga('planes', true)
     setError(null)
     setPlanes([])
-    cascoApi
-      .planes(veh.versionAnioId)
-      .then((r) => vivo && setPlanes(r ?? []))
-      .catch((e) => vivo && setError(mensajeDeError(e)))
-      .finally(() => vivo && setCarga('planes', false))
-    return () => {
-      vivo = false
+    setPlanIdx(null)
+    try {
+      const prov = producto.proveedor?.proveedorId ?? ''
+      const r = await rcvApi.planes(grupoId, producto.productoId, prov)
+      const data = Array.isArray(r) ? r : (r?.data ?? [])
+      setPlanes(data)
+      if (data.length === 0) setError('No se obtuvieron planes para esta combinación.')
+    } catch (e) {
+      setError(mensajeDeError(e))
+    } finally {
+      setCarga('planes', false)
     }
-  }, [paso, ramo, veh.versionAnioId])
+  }, [grupoId, producto])
 
-  // Marcas al montar.
-  useEffect(() => {
-    let vivo = true
-    setCarga('marcas', true)
-    catalogoApi
-      .marcas()
-      .then((r) => vivo && setMarcas(aOpc(r ?? [])))
-      .catch((e) => vivo && setError(mensajeDeError(e)))
-      .finally(() => vivo && setCarga('marcas', false))
-    return () => {
-      vivo = false
-    }
-  }, [])
-
-  const elegirMarca = useCallback((marcaId: string) => {
-    setVeh((v) => ({ ...v, marcaId, marcaNombre: marcas.find((m) => m.valor === marcaId)?.texto, modeloId: null, versionId: null, versionAnioId: null }))
-    setModelos([])
-    setVersiones([])
-    setAnios([])
-    setCarga('modelos', true)
-    catalogoApi
-      .modelos(marcaId)
-      .then((r) => setModelos(aOpc(r ?? [])))
-      .catch((e) => setError(mensajeDeError(e)))
-      .finally(() => setCarga('modelos', false))
-  }, [marcas])
-
-  const elegirModelo = useCallback((modeloId: string) => {
-    setVeh((v) => ({ ...v, modeloId, modeloNombre: modelos.find((m) => m.valor === modeloId)?.texto, versionId: null, versionAnioId: null }))
-    setVersiones([])
-    setAnios([])
-    setCarga('versiones', true)
-    catalogoApi
-      .versiones(modeloId)
-      .then((r) => setVersiones(aOpc(r ?? [])))
-      .catch((e) => setError(mensajeDeError(e)))
-      .finally(() => setCarga('versiones', false))
-  }, [modelos])
-
-  const elegirVersion = useCallback((versionId: string) => {
-    setVeh((v) => ({ ...v, versionId, versionNombre: versiones.find((m) => m.valor === versionId)?.texto, versionAnioId: null }))
-    setAnios([])
-    setCarga('anios', true)
-    catalogoApi
-      .anios(versionId)
-      .then((r) => setAnios((r ?? []).map((a) => ({ valor: a.id, texto: String(a.anio) }))))
-      .catch((e) => setError(mensajeDeError(e)))
-      .finally(() => setCarga('anios', false))
-  }, [versiones])
-
-  const elegirAnio = useCallback((versionAnioId: string) => {
-    const opt = anios.find((a) => a.valor === versionAnioId)
-    setVeh((v) => ({ ...v, versionAnioId, anio: opt ? Number(opt.texto) : undefined }))
-  }, [anios])
-
-  const vehiculoListo = !!veh.versionAnioId && veh.placa.trim().length >= 4
+  const puedeCotizar = !!productoId && !!claseId && !!grupoId
 
   return (
     <View style={{ flex: 1, backgroundColor: color.bgApp }}>
@@ -149,20 +123,13 @@ export function NuevaVentaWizard({ ramo: ramoInicial, express = false }: { ramo:
               <Text style={[est.stepLabel, activo && { color: color.primaryDark, fontWeight: '800' }]} numberOfLines={1}>
                 {p}
               </Text>
-              {i < PASOS.length - 1 ? <View style={[est.stepLinea, hecho && { backgroundColor: color.primary }]} /> : null}
             </View>
           )
         })}
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={est.titulo}>
-          {express ? 'Venta Rápida RCV' : ramo === 'casco' ? 'Nueva Venta · Casco' : 'Nueva Venta · RCV'}
-        </Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }} keyboardShouldPersistTaps="handled">
+        <Text style={est.titulo}>{express ? 'Venta Rápida RCV' : 'Nueva Solicitud'}</Text>
 
         {error ? (
           <View style={{ marginBottom: 12 }}>
@@ -171,118 +138,151 @@ export function NuevaVentaWizard({ ramo: ramoInicial, express = false }: { ramo:
         ) : null}
 
         {paso === 0 ? (
-          <Tarjeta style={{ padding: 18, gap: 14 }}>
-            {!express ? (
-              <View>
-                <Text style={est.subEtiqueta}>Ramo</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {(['rcv', 'casco'] as const).map((r) => (
-                    <Boton
-                      key={r}
-                      texto={r === 'rcv' ? 'RCV' : 'Casco'}
-                      variante={ramo === r ? 'primary' : 'soft'}
-                      onPress={() => setRamo(r)}
-                      style={{ flex: 1 }}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : null}
-            <Text style={est.pasoTitulo}>Datos del vehículo</Text>
-            <Dropdown etiqueta="Marca" opciones={marcas} valor={veh.marcaId} onCambiar={elegirMarca} cargando={cargando.marcas} />
-            <Dropdown etiqueta="Modelo" opciones={modelos} valor={veh.modeloId} onCambiar={elegirModelo} cargando={cargando.modelos} deshabilitado={!veh.marcaId} />
-            <Dropdown etiqueta="Versión" opciones={versiones} valor={veh.versionId} onCambiar={elegirVersion} cargando={cargando.versiones} deshabilitado={!veh.modeloId} />
-            <Dropdown etiqueta="Año" opciones={anios} valor={veh.versionAnioId} onCambiar={elegirAnio} cargando={cargando.anios} deshabilitado={!veh.versionId} />
-            <Campo
-              etiqueta="Placa"
-              placeholder="AB123CD"
-              autoCapitalize="characters"
-              value={veh.placa}
-              onChangeText={(t) => setVeh((v) => ({ ...v, placa: t.toUpperCase() }))}
-            />
-            <View>
-              <Text style={est.subEtiqueta}>Uso</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                {(['PARTICULAR', 'COMERCIAL'] as const).map((u) => (
-                  <Boton
-                    key={u}
-                    texto={u === 'PARTICULAR' ? 'Particular' : 'Comercial'}
-                    variante={veh.uso === u ? 'primary' : 'soft'}
-                    onPress={() => setVeh((v) => ({ ...v, uso: u }))}
-                    style={{ flex: 1 }}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <Boton
-              texto="Continuar a Plan →"
-              onPress={() => setPaso(1)}
-              disabled={!vehiculoListo}
-              style={{ marginTop: 6 }}
-            />
-          </Tarjeta>
-        ) : paso === 1 && ramo === 'casco' ? (
-          // ── Paso Plan · Casco (funcional, planes con prima real) ──────
-          <View style={{ gap: 12 }}>
-            <Text style={est.resumen}>
-              {[veh.marcaNombre, veh.modeloNombre, veh.versionNombre, veh.anio].filter(Boolean).join(' ')} · {veh.placa}
-            </Text>
-            {cargando.planes ? (
-              <Tarjeta style={{ padding: 20 }}>
-                <Text style={est.pendiente}>Consultando planes de casco…</Text>
-              </Tarjeta>
-            ) : planes.length === 0 ? (
-              <Tarjeta style={{ padding: 18 }}>
-                <Text style={est.pendiente}>No hay planes de casco para este vehículo.</Text>
-              </Tarjeta>
-            ) : (
-              planes.map((pl) => {
-                const activo = pl.planId === planId
+          <>
+            {/* 1. Tipo de seguro */}
+            <Text style={est.seccion}>1. ¿Qué tipo de seguro deseas cotizar?</Text>
+            <View style={est.cards}>
+              {TIPOS.map((t, i) => {
+                const sel = t.activo && tipo === t.valor
                 return (
-                  <Pressable key={pl.planId} onPress={() => setPlanId(pl.planId)}>
-                    <Tarjeta style={[{ padding: 16 }, activo && { borderColor: color.primary, borderWidth: 2 }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={est.planNombre}>{pl.planNombre}</Text>
-                        {activo ? <Pildora color={color.primary} texto="Seleccionado" /> : null}
+                  <Pressable
+                    key={i}
+                    disabled={!t.activo}
+                    onPress={() => {
+                      setTipo(t.valor)
+                      setProductoId(null)
+                      setClaseId(null)
+                      setGrupoId(null)
+                    }}
+                    style={[est.card, sel && est.cardSel, !t.activo && est.cardOff]}
+                  >
+                    {!t.activo ? (
+                      <View style={est.proxBadge}>
+                        <Text style={est.proxTexto}>Próximamente</Text>
                       </View>
-                      <Text style={est.planPrima}>{moneda(pl.totalPrimaAnual, '$')} <Text style={est.planPrimaSub}>/ año</Text></Text>
-                      <Text style={est.planSuma}>Suma asegurada: {moneda(pl.sumaAsegurada, '$')}</Text>
-                      <View style={{ marginTop: 8, gap: 3 }}>
-                        {pl.coberturas.slice(0, 5).map((c) => (
-                          <View key={c.coberturaId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                            <Text style={est.covNombre}>{c.nombre}</Text>
-                            <Text style={est.covPrima}>{moneda(c.prima, '$')}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </Tarjeta>
+                    ) : null}
+                    <Text style={est.cardEmoji}>{t.emoji}</Text>
+                    <Text style={[est.cardTexto, !t.activo && { color: color.text4 }]}>{t.texto}</Text>
                   </Pressable>
                 )
-              })
-            )}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-              <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(0)} style={{ flex: 1 }} />
-              <Boton texto="Continuar a Cliente →" onPress={() => setPaso(2)} disabled={planId === null} style={{ flex: 1 }} />
+              })}
             </View>
-          </View>
+
+            {tipo === 'rcv' ? (
+              <>
+                {/* 2. Aseguradora */}
+                <Text style={est.seccion}>2. Selecciona la aseguradora</Text>
+                {cargando.prod ? (
+                  <Tarjeta style={{ padding: 18 }}>
+                    <Text style={est.hint}>Cargando aseguradoras…</Text>
+                  </Tarjeta>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {productos.map((p) => {
+                      const sel = p.productoId === productoId
+                      return (
+                        <Pressable key={p.productoId} onPress={() => setProductoId(p.productoId)}>
+                          <Tarjeta style={[est.aseg, sel && est.asegSel]}>
+                            <Text style={[est.asegTexto, sel && { color: '#fff' }]}>{p.nombre}</Text>
+                          </Tarjeta>
+                        </Pressable>
+                      )
+                    })}
+                  </View>
+                )}
+
+                {/* 3. Datos para la cotización */}
+                {productoId ? (
+                  <>
+                    <Text style={est.seccion}>3. Completa los datos para la cotización</Text>
+                    <Tarjeta style={{ padding: 16, gap: 14 }}>
+                      <Dropdown
+                        etiqueta="Clase de Vehículo"
+                        placeholder="Seleccione una clase"
+                        opciones={aOpc(clases, (c) => c.id, (c) => c.nombre)}
+                        valor={claseId}
+                        onCambiar={elegirClase}
+                      />
+                      <Dropdown
+                        etiqueta="Grupo de Vehículo"
+                        placeholder="Seleccione un grupo"
+                        opciones={aOpc(grupos, (g) => g.id, (g) => g.descripcion)}
+                        valor={grupoId}
+                        onCambiar={setGrupoId}
+                        cargando={cargando.grupos}
+                        deshabilitado={!claseId}
+                      />
+                    </Tarjeta>
+
+                    {/* Info adicional de riesgo */}
+                    <Text style={est.seccion}>Información Adicional de Riesgo</Text>
+                    <Text style={est.hint}>Selecciona las opciones que apliquen para ajustar el precio.</Text>
+                    <View style={{ gap: 10, marginTop: 8 }}>
+                      {RIESGOS.map((r) => (
+                        <Tarjeta key={r.id} style={est.riesgo}>
+                          <Text style={est.riesgoTexto}>{r.texto}</Text>
+                          <Switch
+                            value={!!riesgos[r.id]}
+                            onValueChange={(v) => setRiesgos((s) => ({ ...s, [r.id]: v }))}
+                            trackColor={{ true: color.primary, false: '#CBD5E1' }}
+                            thumbColor="#fff"
+                          />
+                        </Tarjeta>
+                      ))}
+                    </View>
+
+                    <Boton
+                      texto={cargando.planes ? 'Cotizando…' : 'Cotizar Planes'}
+                      onPress={cotizar}
+                      cargando={cargando.planes}
+                      disabled={!puedeCotizar}
+                      style={{ marginTop: 16 }}
+                    />
+
+                    {/* 4. Planes */}
+                    {planes.length > 0 ? (
+                      <>
+                        <Text style={est.seccion}>4. Selecciona el plan ideal para tu cliente</Text>
+                        <View style={{ gap: 12 }}>
+                          {planes.map((pl, i) => (
+                            <PlanCard key={i} plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} />
+                          ))}
+                        </View>
+                        <Boton
+                          texto="Continuar — Datos del Cliente"
+                          onPress={() => setPaso(1)}
+                          disabled={planIdx === null}
+                          style={{ marginTop: 16 }}
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </>
+            ) : tipo === 'funerario' ? (
+              <View style={{ marginTop: 8 }}>
+                <Alerta tipo="info">
+                  Cotización de servicio funerario: planes por edad del asegurado. Se completa en la siguiente
+                  iteración con su endpoint de planes.
+                </Alerta>
+              </View>
+            ) : (
+              <View style={{ marginTop: 8 }}>
+                <Alerta tipo="info">Elige un tipo de seguro para empezar la cotización.</Alerta>
+              </View>
+            )}
+          </>
         ) : (
           <Tarjeta style={{ padding: 18 }}>
-            <View style={est.badge}>
-              <Text style={est.badgeTexto}>SIGUIENTE ITERACIÓN</Text>
+            <View style={est.nextBadge}>
+              <Text style={est.nextTexto}>SIGUIENTE ITERACIÓN</Text>
             </View>
             <Text style={est.pasoTitulo}>{PASOS[paso]}</Text>
-            <Text style={est.resumen}>
-              Vehículo seleccionado:{' '}
-              <Text style={{ fontWeight: '800', color: color.text }}>
-                {[veh.marcaNombre, veh.modeloNombre, veh.versionNombre, veh.anio].filter(Boolean).join(' ')} · {veh.placa}
-              </Text>
-            </Text>
-            <Text style={est.pendiente}>
+            <Text style={est.hint}>
               {paso === 1
-                ? 'Selección de plan RCV y cálculo de prima (tarifa/coberturas por clase, validación SUDEASEG y APOV).'
+                ? 'Datos del tomador y vehículo, con OCR de cédula y carnet de circulación (placa/seriales/color) y staging en el micro de clientes.'
                 : paso === 2
-                  ? 'Datos del cliente/conductor con OCR de cédula y staging en el micro de clientes.'
+                  ? 'Datos del conductor y evaluación de riesgo.'
                   : 'Registro de pago (pago móvil / referencia) y emisión con cuadro y carnet.'}
             </Text>
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
@@ -298,6 +298,34 @@ export function NuevaVentaWizard({ ramo: ramoInicial, express = false }: { ramo:
   )
 }
 
+/** Tarjeta de plan RCV (defensiva sobre la forma exacta del backend). */
+function PlanCard({ plan, activo, onPress }: { plan: any; activo: boolean; onPress: () => void }) {
+  const titulo = plan?.grupo?.descripcion ?? plan?.descripcion ?? plan?._planLabel ?? 'Plan RCV'
+  const tcr = plan?.primaAnualTCR ?? plan?.finalPrice ?? plan?.prima ?? null
+  const coberturas: any[] = Array.isArray(plan?.coberturas) ? plan.coberturas : []
+  return (
+    <Pressable onPress={onPress}>
+      <Tarjeta style={[{ padding: 16 }, activo && { borderColor: color.primary, borderWidth: 2 }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={est.planTitulo}>{titulo}</Text>
+          {activo ? <Pildora color={color.primary} texto="Seleccionado" /> : null}
+        </View>
+        {coberturas.slice(0, 4).map((c, i) => (
+          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+            <Text style={est.covNombre}>✔ {c?.nombre ?? c?.cobertura ?? 'Cobertura'}</Text>
+            <Text style={est.covVal}>{numero(c?.sumaCobertura ?? c?.sumaAsegurada)} EUR</Text>
+          </View>
+        ))}
+        {tcr != null ? (
+          <Text style={est.planPrima}>
+            TCR {moneda(tcr, '')} EUR <Text style={est.planPrimaSub}>/ Anual</Text>
+          </Text>
+        ) : null}
+      </Tarjeta>
+    </Pressable>
+  )
+}
+
 const est = StyleSheet.create({
   stepper: {
     flexDirection: 'row',
@@ -307,33 +335,40 @@ const est = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  stepItem: { flex: 1, alignItems: 'center', position: 'relative' },
+  stepItem: { flex: 1, alignItems: 'center' },
   stepNum: {
-    width: 28,
-    height: 28,
-    borderRadius: 99,
-    backgroundColor: color.bgCard,
-    borderWidth: 1,
-    borderColor: color.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 28, height: 28, borderRadius: 99, backgroundColor: color.bgCard,
+    borderWidth: 1, borderColor: color.border, alignItems: 'center', justifyContent: 'center',
   },
   stepNumActivo: { backgroundColor: color.primary, borderColor: color.primary },
   stepNumHecho: { backgroundColor: color.success, borderColor: color.success },
   stepNumTexto: { fontSize: 12, fontWeight: '800', color: color.text3 },
-  stepLabel: { fontSize: 10.5, color: color.text3, marginTop: 4 },
-  stepLinea: { position: 'absolute', top: 14, left: '60%', right: '-40%', height: 2, backgroundColor: color.border },
-  titulo: { fontSize: 18, fontWeight: '800', color: color.text, marginBottom: 14, letterSpacing: -0.3 },
-  pasoTitulo: { fontSize: 15, fontWeight: '800', color: color.text },
-  subEtiqueta: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 8 },
-  badge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
-  badgeTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
-  resumen: { fontSize: 12.5, color: color.text2, marginTop: 2, lineHeight: 19 },
-  pendiente: { fontSize: 12.5, color: color.text2, marginTop: 10, lineHeight: 19 },
-  planNombre: { fontSize: 15, fontWeight: '800', color: color.text },
-  planPrima: { fontSize: 20, fontWeight: '800', color: color.primary, marginTop: 6 },
+  stepLabel: { fontSize: 10, color: color.text3, marginTop: 4, textAlign: 'center' },
+  titulo: { fontSize: 20, fontWeight: '800', color: color.text, marginBottom: 14, letterSpacing: -0.3 },
+  seccion: { fontSize: 14.5, fontWeight: '800', color: color.text, marginTop: 22, marginBottom: 10 },
+  hint: { fontSize: 12, color: color.text3, lineHeight: 17 },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  card: {
+    width: '47%', flexGrow: 1, backgroundColor: color.white, borderWidth: 1, borderColor: color.borderSoft,
+    borderRadius: 14, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', minHeight: 96,
+  },
+  cardSel: { borderColor: color.primary, borderWidth: 2, backgroundColor: color.primaryLight },
+  cardOff: { opacity: 0.6 },
+  cardEmoji: { fontSize: 26, marginBottom: 6 },
+  cardTexto: { fontSize: 13, fontWeight: '800', color: color.text, textAlign: 'center' },
+  proxBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#4B5563', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 6 },
+  proxTexto: { fontSize: 8.5, fontWeight: '700', color: '#fff' },
+  aseg: { padding: 16, alignItems: 'center' },
+  asegSel: { backgroundColor: color.primary, borderColor: color.primary },
+  asegTexto: { fontSize: 13.5, fontWeight: '700', color: color.text, textAlign: 'center' },
+  riesgo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  riesgoTexto: { flex: 1, fontSize: 12, color: color.text2, lineHeight: 17 },
+  planTitulo: { fontSize: 15, fontWeight: '800', color: color.text },
+  planPrima: { fontSize: 18, fontWeight: '800', color: color.primary, marginTop: 8 },
   planPrimaSub: { fontSize: 12, fontWeight: '600', color: color.text3 },
-  planSuma: { fontSize: 12, color: color.text2, marginTop: 2 },
   covNombre: { fontSize: 11.5, color: color.text2 },
-  covPrima: { fontSize: 11.5, color: color.text, fontWeight: '600' },
+  covVal: { fontSize: 11.5, color: color.text, fontWeight: '700' },
+  pasoTitulo: { fontSize: 16, fontWeight: '800', color: color.text, marginBottom: 8 },
+  nextBadge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
+  nextTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
 })

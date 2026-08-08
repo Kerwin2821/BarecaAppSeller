@@ -1,6 +1,6 @@
 import { NuevaVentaWizard } from '@/components/NuevaVentaWizard'
 
-/** Flujo express de RCV (menos pasos, emisión rápida). */
+/** Venta Rápida RCV (flujo express). */
 export default function NuevaVentaExpress() {
-  return <NuevaVentaWizard ramo="rcv" express />
+  return <NuevaVentaWizard express />
 }

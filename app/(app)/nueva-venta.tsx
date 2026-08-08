@@ -1,6 +1,6 @@
 import { NuevaVentaWizard } from '@/components/NuevaVentaWizard'
 
-/** Flujo de venta tradicional (RCV / Casco). */
+/** Nueva Venta (flujo RCV / Funerario, como la web). */
 export default function NuevaVenta() {
-  return <NuevaVentaWizard ramo="rcv" />
+  return <NuevaVentaWizard />
 }

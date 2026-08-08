@@ -136,6 +136,34 @@ export const comisionApi = {
     bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
 }
 
+// ── RCV: cotización (clase → grupo → tarifa), público ───────
+export interface ClaseVehiculo { id: string; nombre: string; codigo?: string }
+export interface GrupoVehiculo { id: string; descripcion: string; codigo?: string }
+export interface ProductoAseguradora {
+  productoId: string
+  nombre: string
+  proveedor?: { proveedorId?: string | null; id?: number; nombre?: string }
+}
+export const rcvApi = {
+  clases: () =>
+    bff<ClaseVehiculo[]>('/policies/clase-vehiculos', {
+      params: { 'activo.equals': 'TRUE', page: 0, size: 100, sort: 'nombre' }, sinCierre: true,
+    }),
+  gruposPorClase: (claseId: string) =>
+    bff<{ data: GrupoVehiculo[] } | GrupoVehiculo[]>('/policies/grupo-vehiculos/grupo-by-clase', {
+      params: { claseId, activo: 'TRUE' }, sinCierre: true,
+    }),
+  /** Aseguradoras = productos. Se filtran a RCV en la pantalla. */
+  productos: () =>
+    bff<ProductoAseguradora[]>('/users/productos', { params: { page: 0, size: 100 }, sinCierre: true }),
+  /** Planes (tarifas de cobertura) por grupo + producto + proveedor. */
+  planes: (grupoId: string, productoId: string, proveedorId: string) =>
+    bff<{ data: any[] } | any[]>(
+      `/policies/tarifa-coberturas/tarifa-by-grupo/${encodeURIComponent(grupoId)}/${encodeURIComponent(productoId)}/${encodeURIComponent(proveedorId)}/TRUE`,
+      { sinCierre: true },
+    ),
+}
+
 // ── Casco: planes con prima (público, para Nueva Venta) ─────
 export interface CascoCobertura {
   coberturaId: number
