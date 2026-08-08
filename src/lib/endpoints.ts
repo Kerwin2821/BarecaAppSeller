@@ -136,6 +136,27 @@ export const comisionApi = {
     bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
 }
 
+// ── Catálogo de vehículos (público, para Nueva Venta) ───────
+// Cascada marca → modelo → versión → año. Enruta a ServiceRcvCaroni.
+export const catalogoApi = {
+  marcas: (anio?: number) =>
+    bff<{ id: string; nombre: string }[]>('/policies/catalogo-vehiculos/marcas', {
+      params: { anio }, sinCierre: true,
+    }),
+  modelos: (marcaId: string, anio?: number) =>
+    bff<{ id: string; nombre: string }[]>('/policies/catalogo-vehiculos/modelos', {
+      params: { marcaId, anio }, sinCierre: true,
+    }),
+  versiones: (modeloId: string, anio?: number) =>
+    bff<{ id: string; nombre: string }[]>('/policies/catalogo-vehiculos/versiones', {
+      params: { modeloId, anio }, sinCierre: true,
+    }),
+  anios: (versionId: string) =>
+    bff<{ id: string; anio: number }[]>('/policies/catalogo-vehiculos/anios', {
+      params: { versionId }, sinCierre: true,
+    }),
+}
+
 // ── Solicitudes de modificación ─────────────────────────────
 export const modificationApi = {
   lista: (role: string, parentId: string) =>
