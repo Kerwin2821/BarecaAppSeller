@@ -136,6 +136,16 @@ export const comisionApi = {
     bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
 }
 
+// ── Solicitudes de modificación ─────────────────────────────
+export const modificationApi = {
+  lista: (role: string, parentId: string) =>
+    bff<any[]>('/modification-requests', { params: { role, parentId } }),
+  crear: (body: unknown) => bff<any>('/modification-requests', { method: 'POST', body }),
+  porPoliza: (policyId: string) => bff<any>(`/modification-requests/policy/${encodeURIComponent(policyId)}`),
+  actualizarEstado: (id: string, status: string) =>
+    bff<any>(`/modification-requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status } }),
+}
+
 // ── Público (verificación de póliza por QR) ─────────────────
 import { urlBff } from './api'
 export const publicApi = {
