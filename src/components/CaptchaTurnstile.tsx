@@ -1,14 +1,16 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 
 /**
  * Renderiza el widget Cloudflare Turnstile dentro de un WebView y devuelve el
  * token al obtenerse. Es el equivalente nativo del `<div class="cf-turnstile">`
- * que el portal web usa en el login: el BFF exige `recaptchaToken`.
+ * del login web: el BFF exige `recaptchaToken` y lo revalida contra
+ * `siteverify` (single-use, expira ~300s).
  *
- * El WebView se carga con `originWhitelist`/`baseUrl` en el dominio del portal
- * para que el sitekey (ligado a ese dominio en Cloudflare) valide.
+ * Los tokens de Turnstile son de **un solo uso**: si el login falla hay que
+ * pedir uno nuevo con `turnstile.reset()`. Por eso `resetKey`: cada vez que
+ * cambia, el widget se reinicia y emite un token fresco.
  */
 
 const SITEKEY = process.env.EXPO_PUBLIC_TURNSTILE_SITEKEY ?? ''
@@ -17,10 +19,23 @@ const HOST = process.env.EXPO_PUBLIC_TURNSTILE_HOST ?? 'https://qaasesores.barec
 export function CaptchaTurnstile({
   onToken,
   onError,
+  resetKey = 0,
 }: {
   onToken: (token: string) => void
   onError?: (mensaje: string) => void
+  /** Cambiar este número reinicia el captcha y pide un token nuevo. */
+  resetKey?: number
 }) {
+  const webRef = useRef<WebView>(null)
+
+  // Reinicio del widget cuando el padre incrementa resetKey (p. ej. tras un
+  // login fallido): turnstile.reset() vuelve a resolver y emite token fresco.
+  useEffect(() => {
+    if (resetKey > 0) {
+      webRef.current?.injectJavaScript('try{window.turnstile&&turnstile.reset()}catch(e){};true;')
+    }
+  }, [resetKey])
+
   const html = useMemo(
     () => `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
@@ -34,32 +49,33 @@ export function CaptchaTurnstile({
   <div id="cap"></div>
   <script>
     function post(msg){ if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(msg)); }
-    window.onloadTurnstileCallback = function(){
+    var rendered = false;
+    function render(){
+      if (rendered || !window.turnstile) return;
+      rendered = true;
       try {
         turnstile.render('#cap', {
           sitekey: '${SITEKEY}',
+          retry: 'auto',
+          'refresh-expired': 'auto',
           callback: function(token){ post({type:'token', token:token}); },
-          'error-callback': function(){ post({type:'error', message:'captcha-error'}); },
+          'error-callback': function(c){ post({type:'error', code:c}); },
           'expired-callback': function(){ post({type:'expired'}); }
         });
       } catch (e) { post({type:'error', message:String(e)}); }
-    };
-    // Si la API ya cargó antes del callback:
-    var t = setInterval(function(){
-      if (window.turnstile) { clearInterval(t); window.onloadTurnstileCallback(); }
-    }, 300);
+    }
+    var t = setInterval(function(){ if (window.turnstile) { clearInterval(t); render(); } }, 250);
   </script>
 </body></html>`,
     [],
   )
 
-  if (!SITEKEY) {
-    return null
-  }
+  if (!SITEKEY) return null
 
   return (
     <View style={est.caja} pointerEvents="box-none">
       <WebView
+        ref={webRef}
         source={{ html, baseUrl: HOST }}
         originWhitelist={['*']}
         javaScriptEnabled
@@ -67,13 +83,12 @@ export function CaptchaTurnstile({
         scrollEnabled={false}
         style={est.web}
         containerStyle={est.web}
-        backgroundColor="transparent"
         onMessage={(e) => {
           try {
             const msg = JSON.parse(e.nativeEvent.data)
             if (msg.type === 'token' && msg.token) onToken(msg.token)
-            else if (msg.type === 'error') onError?.('No se pudo verificar el captcha. Reintente.')
-            else if (msg.type === 'expired') onError?.('El captcha expiró. Reintente.')
+            else if (msg.type === 'expired') onError?.('El captcha expiró. Reintenta.')
+            else if (msg.type === 'error') onError?.('No se pudo verificar el captcha. Reintenta.')
           } catch {
             // ignorar mensajes malformados
           }

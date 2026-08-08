@@ -33,6 +33,7 @@ export default function Login() {
   const [identificador, setIdentificador] = useState('')
   const [password, setPassword] = useState('')
   const [token, setToken] = useState<string | null>(null)
+  const [resetKey, setResetKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
@@ -43,7 +44,7 @@ export default function Login() {
       return
     }
     if (HAY_CAPTCHA && !token) {
-      setError('Complete la verificación de seguridad.')
+      setError('Espere a que termine la verificación de seguridad.')
       return
     }
     setEnviando(true)
@@ -59,6 +60,10 @@ export default function Login() {
     } catch (err) {
       setError(mensajeDeError(err))
       setEnviando(false)
+      // El token de Turnstile es de un solo uso: tras un fallo, invalídalo y
+      // pide uno nuevo para que el reintento no reuse el token ya consumido.
+      setToken(null)
+      setResetKey((k) => k + 1)
     }
   }
 
@@ -108,7 +113,14 @@ export default function Login() {
 
         {HAY_CAPTCHA ? (
           <View style={{ marginTop: 16, alignItems: 'center' }}>
-            <CaptchaTurnstile onToken={setToken} onError={(m) => setError(m)} />
+            <CaptchaTurnstile
+              resetKey={resetKey}
+              onToken={(t) => {
+                setToken(t)
+                setError(null)
+              }}
+              onError={(m) => setError(m)}
+            />
           </View>
         ) : null}
 
