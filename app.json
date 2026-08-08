@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "BARECA Vendedores",
+    "slug": "bareca-vendedores",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "barecavendedores",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B2470"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bareca.vendedores"
+    },
+    "android": {
+      "package": "com.bareca.vendedores",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B2470"
+      },
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

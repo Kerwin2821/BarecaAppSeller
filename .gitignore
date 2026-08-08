@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Nativo (este proyecto corre en Expo Go; los directorios nativos se generan con prebuild)
+ios/
+android/
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# Variables locales (la .env de QA sí se versiona: no contiene secretos)
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
