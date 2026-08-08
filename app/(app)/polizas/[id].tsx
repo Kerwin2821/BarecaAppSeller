@@ -3,10 +3,10 @@ import { Linking, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
-import { fetchPolizas } from '@/lib/polizas'
+import { fetchPolizas, type CategoriaPoliza } from '@/lib/polizas'
 import { policyApi } from '@/lib/endpoints'
 import { desenvolver, mensajeDeError } from '@/lib/api'
-import { fechaCorta } from '@/lib/formato'
+import { fechaCorta, moneda } from '@/lib/formato'
 import type { DisplayPolicy, PolicyStatus } from '@/lib/tipos'
 import { Pantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError, Skeleton } from '@/components/Estados'
@@ -31,13 +31,14 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | null }) 
 }
 
 export default function DetallePoliza() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, cat } = useLocalSearchParams<{ id: string; cat?: string }>()
+  const categoria = (cat as CategoriaPoliza) ?? 'vehicle'
   const { user } = useAuth()
   const { avisar } = useToast()
   const [bajando, setBajando] = useState(false)
 
-  const cargar = useCallback(() => fetchPolizas(user), [user])
-  const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
+  const cargar = useCallback(() => fetchPolizas(user, categoria), [user, categoria])
+  const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId, categoria])
 
   const p: DisplayPolicy | undefined = useMemo(
     () => datos?.items.find((x) => String(x.id) === String(id)),
@@ -122,6 +123,21 @@ export default function DetallePoliza() {
             <Dato etiqueta="Año" valor={p.vehicleDetails.year} />
             <Dato etiqueta="Serial NIV" valor={p.vehicleDetails.serialNIV} />
             <Dato etiqueta="Uso" valor={p.vehicleDetails.vehicleUse} />
+          </Tarjeta>
+        </>
+      ) : null}
+
+      {p.financials && (p.financials.totalPremium > 0 || p.financials.planTotal > 0) ? (
+        <>
+          <TituloSeccion>Financiero</TituloSeccion>
+          <Tarjeta style={{ padding: 16 }}>
+            {p.financials.totalPremium > 0 ? (
+              <Dato etiqueta="Prima total" valor={moneda(p.financials.totalPremium, p.financials.currency === 'USD' ? '$' : 'Bs.')} />
+            ) : null}
+            {p.financials.planTotal > 0 ? (
+              <Dato etiqueta={categoria === 'auto' ? 'Suma asegurada' : 'Monto del plan'} valor={moneda(p.financials.planTotal, p.financials.currency === 'USD' ? '$' : 'Bs.')} />
+            ) : null}
+            {p.financials.referenceNumber ? <Dato etiqueta="Referencia de pago" valor={p.financials.referenceNumber} /> : null}
           </Tarjeta>
         </>
       ) : null}

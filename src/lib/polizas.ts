@@ -1,6 +1,8 @@
 import { policyApi } from './endpoints'
 import type { CurrentUser, DisplayPolicy, PolicyStatus } from './tipos'
 
+export type CategoriaPoliza = 'vehicle' | 'auto' | 'funeral'
+
 /**
  * Mapeo del contrato `/polizas` → DisplayPolicy, portado de PoliciesService
  * del portal (transformPolicyLight + resolveStatus + resolveInsuranceName).
@@ -62,6 +64,73 @@ export function mapPoliza(p: any): DisplayPolicy {
   }
 }
 
+/** Casco (transformCascoLight del portal). */
+export function mapCasco(c: any): DisplayPolicy {
+  const estado = String(c?.estado || '').toUpperCase()
+  const status: PolicyStatus =
+    estado === 'INACTIVA' || estado === 'ANULADA' || estado === 'FINALIZADA' ? 'Inactiva' : 'Vigente'
+  return {
+    id: c?.id,
+    policyNumber: c?.numeroPoliza || 'N/A',
+    category: 'auto',
+    clientName: String(c?.clienteNombre || c?.clienteDocumento || 'Cliente').trim(),
+    clientDocument: c?.clienteDocumento ?? '',
+    productName: 'Seguro de Auto (Casco)',
+    orderNumber: c?.numeroOrden ?? '',
+    saleDate: c?.fecha ?? '',
+    startDate: '',
+    endDate: '',
+    status,
+    sellerName: '',
+    sellerDocument: '',
+    financials: {
+      totalPremium: Number(c?.totalPrima ?? 0),
+      currency: 'USD',
+      paymentMethod: '',
+      referenceNumber: '',
+      rcvAmount: 0,
+      conversionRate: 0,
+      additionalTotal: 0,
+      planTotal: Number(c?.sumaAsegurada ?? 0),
+    },
+    vehicleDetails: {
+      plate: c?.placa || 'N/A',
+      make: '',
+      model: c?.planNombre || '',
+      serialNIV: c?.serialCarroceria || '',
+      year: '',
+      vehicleType: 'Auto (Casco)',
+      vehicleUse: '',
+    },
+  }
+}
+
+/** Funeraria (transformFuneralLight del portal). */
+export function mapFuneral(f: any): DisplayPolicy {
+  const cli = f?.cliente
+  let clientName = 'Cliente Desconocido'
+  if (cli) {
+    if (cli.razonSocial) clientName = cli.razonSocial
+    else if (cli.nombres) clientName = `${cli.nombres}${cli.apellidos ? ` ${cli.apellidos}` : ''}`
+    else if (cli.numeroDocumento) clientName = cli.numeroDocumento
+  }
+  return {
+    id: f?.id,
+    policyNumber: f?.numeroPolizas ?? '', // la API usa el plural
+    category: 'funeral',
+    clientName: clientName.trim(),
+    clientDocument: cli?.numeroDocumento ?? '',
+    productName: 'Servicio Funerario',
+    orderNumber: f?.orden?.numeroOrden ?? '',
+    saleDate: f?.fecha ?? f?.fechaCreacion ?? '',
+    startDate: f?.fechaInicio ?? '',
+    endDate: f?.fechaFin ?? '',
+    status: f?.activo ? 'Vigente' : 'Inactiva',
+    sellerName: '',
+    sellerDocument: '',
+  }
+}
+
 /** Parámetros de jerarquía según el rol (buildApiParams del portal). */
 function filtroJerarquia(user: CurrentUser | null): Record<string, string | undefined> {
   if (!user) return {}
@@ -72,14 +141,36 @@ function filtroJerarquia(user: CurrentUser | null): Record<string, string | unde
   return {}
 }
 
+function desenvolverLista(r: any): { data: any[]; total: number } {
+  const data: any[] = Array.isArray(r) ? r : (r?.data ?? [])
+  const total: number = Array.isArray(r) ? r.length : (r?.total ?? data.length)
+  return { data, total }
+}
+
+/**
+ * Trae las pólizas de una categoría desde su endpoint real (como el
+ * fetchSoldPolicies del portal: un API por categoría) y las mapea a DisplayPolicy.
+ */
 export async function fetchPolizas(
   user: CurrentUser | null,
+  categoria: CategoriaPoliza = 'vehicle',
   page = 0,
   size = 25,
 ): Promise<{ items: DisplayPolicy[]; total: number }> {
-  const r: any = await policyApi.lista({ page, size, ...filtroJerarquia(user) })
-  const data: any[] = Array.isArray(r) ? r : (r?.data ?? [])
-  const total: number = Array.isArray(r) ? r.length : (r?.total ?? data.length)
-  const items = data.map(mapPoliza).sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())
+  const params = { page, size, ...filtroJerarquia(user) }
+  let r: any
+  let mapper: (x: any) => DisplayPolicy
+  if (categoria === 'auto') {
+    r = await policyApi.cascoMisVentas(params)
+    mapper = mapCasco
+  } else if (categoria === 'funeral') {
+    r = await policyApi.funerariasMisVentas(params)
+    mapper = mapFuneral
+  } else {
+    r = await policyApi.lista(params)
+    mapper = mapPoliza
+  }
+  const { data, total } = desenvolverLista(r)
+  const items = data.map(mapper).sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())
   return { items, total }
 }
