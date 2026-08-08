@@ -12,7 +12,7 @@ Configurado en [`.env`](.env):
 
 ```
 EXPO_PUBLIC_BFF_URL=https://qaasesores.barecaonline.com   # BFF QA (bff-polizas-claude)
-EXPO_PUBLIC_APP_NAME=policy-market                        # x-app-name (flujo autenticado)
+EXPO_PUBLIC_PORTAL_ID=VENDEDORES                             # X-Portal-Id (identifica el portal)
 EXPO_PUBLIC_TURNSTILE_SITEKEY=0x4AAAAAACd-1uO91ziroUoi    # captcha del login (público)
 ```
 
@@ -56,7 +56,7 @@ El captcha **Cloudflare Turnstile** se resuelve en un WebView (`react-native-web
 La sesión se restaura al abrir el app validando la cookie. Cierre de sesión limpia cookie + perfil.
 
 > **Para verificar login/venta extremo a extremo hace falta:** credenciales de un vendedor de QA
-> y que el BFF QA acepte el `x-app-name`/captcha desde el app. La cookie HttpOnly la persiste RN
+> y que el BFF QA acepte el `X-Portal-Id`/captcha desde el app. La cookie HttpOnly la persiste RN
 > de forma nativa; si el BFF exige `SameSite`/dominio estrictos, habría que ajustar en el BFF.
 
 ## Estructura

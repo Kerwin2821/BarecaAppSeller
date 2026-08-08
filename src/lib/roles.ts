@@ -48,7 +48,7 @@ export function rutaInicialPorRol(role: UserRole | null | undefined): string {
 export function etiquetaRol(role: UserRole | null | undefined): string {
   switch (role) {
     case 'BARECA':
-      return 'Bareca'
+      return 'Corporativo'
     case 'OFICINA_REGIONAL':
       return 'Oficina Regional'
     case 'DISTRIBUIDOR':

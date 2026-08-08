@@ -36,7 +36,7 @@ necesita re-derivar algo, descargar `https://qaasesores.barecaonline.com/<chunk>
 
 ## Pendiente (necesita credenciales de QA)
 
-- Verificar login/venta extremo a extremo (usuario vendedor de QA + que el BFF acepte `x-app-name`/captcha del app).
+- Verificar login/venta extremo a extremo (usuario vendedor de QA + que el BFF acepte `X-Portal-Id`/captcha del app).
 - Completar Nueva Venta (emisión), Equipo, Mapa, Soporte/Chat, Ajuste de Pagos, Solicitudes con datos reales.
 
 ## Reglas

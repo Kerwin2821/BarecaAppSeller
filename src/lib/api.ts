@@ -15,7 +15,13 @@ export const BFF_URL: string = (
 
 export const API_PREFIX = '/api'
 export const API_BASE = `${BFF_URL}${API_PREFIX}`
-export const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME ?? 'policy-market'
+
+/**
+ * El portal de vendedores se identifica ante el BFF con `X-Portal-Id: VENDEDORES`
+ * (igual que el authInterceptor de la web). No usa `x-app-name` — ese header es
+ * del flujo PÚBLICO (policy-payments) y dispara el whitelist del BFF.
+ */
+export const PORTAL_ID = process.env.EXPO_PUBLIC_PORTAL_ID ?? 'VENDEDORES'
 
 export class ApiException extends Error {
   readonly status: number
@@ -68,7 +74,7 @@ export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promi
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'x-app-name': APP_NAME,
+    'X-Portal-Id': PORTAL_ID,
   }
   const esForm = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !esForm) headers['Content-Type'] = 'application/json'
