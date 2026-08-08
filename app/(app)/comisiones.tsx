@@ -6,18 +6,10 @@ import { comisionApi } from '@/lib/endpoints'
 import { desenvolver } from '@/lib/api'
 import { actorUuid } from '@/lib/roles'
 import { moneda } from '@/lib/formato'
-import type { CurrentUser } from '@/lib/tipos'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError, EstadoVacio } from '@/components/Estados'
 import { Tarjeta } from '@/components/Ui'
 import { color } from '@/lib/tema'
-
-/** Parámetros de consulta de comisiones según el actor de jerarquía. */
-function paramsActor(user: CurrentUser | null): Record<string, string | undefined> {
-  if (!user) return {}
-  const uuid = actorUuid(user) ?? undefined
-  return { tipoActor: user.role, actorUuid: uuid }
-}
 
 function TarjetaTotal({ etiqueta, valor, color: c }: { etiqueta: string; valor: number | undefined; color: string }) {
   return (
@@ -32,14 +24,17 @@ export default function Comisiones() {
   const { user } = useAuth()
 
   const cargar = useCallback(async () => {
-    const r = await comisionApi.totales(paramsActor(user))
+    if (!user) return null
+    const uuid = actorUuid(user) ?? ''
+    if (!uuid) return null
+    const r = await comisionApi.totales(user.role, uuid)
     return desenvolver(r) as any
   }, [user])
   const { datos, cargando, error, recargar } = useApi<any>(cargar, [user?.loginId])
 
-  const generado = datos?.totalGenerado ?? datos?.generado ?? datos?.total
-  const pagado = datos?.totalPagado ?? datos?.pagado
-  const pendiente = datos?.totalPendiente ?? datos?.pendiente
+  const generado = datos?.totalGenerado ?? datos?.generado ?? datos?.total ?? datos?.montoTotal
+  const pagado = datos?.totalPagado ?? datos?.pagado ?? datos?.montoPagado
+  const pendiente = datos?.totalPendiente ?? datos?.pendiente ?? datos?.montoPendiente
 
   return (
     <Pantalla onRefresh={recargar}>
@@ -66,9 +61,9 @@ export default function Comisiones() {
           </View>
 
           <Text style={est.nota}>
-            Los montos provienen de{' '}
-            <Text style={{ fontWeight: '700' }}>/comision-transaccion-items/v1/totales</Text> filtrados por tu
-            actor de jerarquía.
+            Totales de{' '}
+            <Text style={{ fontWeight: '700' }}>/api/users/comision-transaccion-items/v1/totales</Text> para tu
+            actor ({user?.role}).
           </Text>
         </View>
       )}

@@ -62,6 +62,31 @@ export function etiquetaRol(role: UserRole | null | undefined): string {
   }
 }
 
+/** ID numérico de entidad según el rol (para reportes: param `id`). */
+export function entidadIdPorRol(user: {
+  role: UserRole
+  barecaEntityId?: number
+  officeEntityId?: number
+  distributorEntityId?: number
+  kioskEntityId?: number
+  employeeEntityId?: number
+}): number | undefined {
+  switch (user.role) {
+    case 'BARECA':
+      return user.barecaEntityId
+    case 'OFICINA_REGIONAL':
+      return user.officeEntityId
+    case 'DISTRIBUIDOR':
+      return user.distributorEntityId
+    case 'KIOSCO':
+      return user.kioskEntityId
+    case 'EMPLEADO':
+      return user.employeeEntityId
+    default:
+      return undefined
+  }
+}
+
 /** UUID del actor de jerarquía según el rol (para lookups y filtros). */
 export function actorUuid(user: {
   role: UserRole

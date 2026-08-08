@@ -119,20 +119,21 @@ export const notifApi = {
 
 // ── Reporte de pólizas ──────────────────────────────────────
 export const reportApi = {
-  kpis: (params: Record<string, string | number | undefined> = {}) =>
-    bff<{ success: boolean; data: ReportKpis }>('/reporte/kpis', { params }),
-  polizas: (params: Record<string, string | number | undefined> = {}) =>
-    bff<{ success: boolean; data: any[] }>('/reporte/polizas', { params }),
+  kpis: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
+    bff<{ success: boolean; data: ReportKpis }>('/reporte/kpis', { params: { perfil, id, ...filtros } }),
+  polizas: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
+    bff<{ success: boolean; data: any[] }>('/reporte/polizas', { params: { perfil, id, ...filtros } }),
 }
 
-// ── Comisiones (bajo /api/policies) ─────────────────────────
+// ── Comisiones (bajo /api/users) ────────────────────────────
 export const comisionApi = {
-  totales: (params: Record<string, string | number | undefined> = {}) =>
-    bff<ApiResponse<any>>('/policies/comision-transaccion-items/v1/totales', { params }),
+  /** Totales de comisión del actor. Params reales: tipo, uuid. */
+  totales: (tipo: string, uuid: string) =>
+    bff<any>('/users/comision-transaccion-items/v1/totales', { params: { tipo, uuid } }),
   subarbol: (params: Record<string, string | number | undefined> = {}) =>
-    bff<ApiResponse<any>>('/policies/comision-transaccions/v1/transacciones/subarbol', { params }),
+    bff<any>('/users/comision-transaccions/v1/transacciones/subarbol', { params }),
   ordenesPago: (params: Record<string, string | number | undefined> = {}) =>
-    bff<ApiResponse<any>>('/policies/pago-comision-ordens/v1/ordenes', { params }),
+    bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
 }
 
 // ── Público (verificación de póliza por QR) ─────────────────

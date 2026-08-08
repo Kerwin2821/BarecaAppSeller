@@ -1,20 +1,25 @@
 import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { reportApi } from '@/lib/endpoints'
+import { entidadIdPorRol } from '@/lib/roles'
 import { moneda, numero } from '@/lib/formato'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError } from '@/components/Estados'
 import { Tarjeta } from '@/components/Ui'
 import { color, fuenteMono } from '@/lib/tema'
 
-/** Reporte de pólizas: KPIs del BFF (`/reporte/kpis`). */
+/** Reporte de pólizas: KPIs del BFF (`/reporte/kpis?perfil=&id=`). */
 export default function Reporte() {
+  const { user } = useAuth()
   const cargar = useCallback(async () => {
-    const r = await reportApi.kpis()
+    const id = user ? entidadIdPorRol(user) : undefined
+    if (!user || id === undefined) return {}
+    const r = await reportApi.kpis(user.role, id)
     return (r?.data ?? {}) as Record<string, number>
-  }, [])
-  const { datos, cargando, error, recargar } = useApi<Record<string, number>>(cargar, [])
+  }, [user])
+  const { datos, cargando, error, recargar } = useApi<Record<string, number>>(cargar, [user?.loginId])
 
   const totalPolizas = datos?.totalPolizas ?? datos?.total ?? datos?.cantidad
   const montoTotal = datos?.montoTotal ?? datos?.total_monto
