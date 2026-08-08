@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { catalogoApi } from '../lib/endpoints'
+import { catalogoApi, cascoApi, type CascoPlan } from '../lib/endpoints'
 import { mensajeDeError } from '../lib/api'
+import { moneda } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
-import { Alerta, Boton, Campo, Tarjeta } from './Ui'
+import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
 
 type Ramo = 'rcv' | 'casco'
@@ -33,8 +34,9 @@ const aOpc = (xs: { id: string; nombre: string }[]): OpcionDrop[] =>
  * públicos). Los pasos Plan/Cliente/Pago se completan en las siguientes
  * iteraciones (tarifa/prima, staging de cliente y pasarela de pago).
  */
-export function NuevaVentaWizard({ ramo, express = false }: { ramo: Ramo; express?: boolean }) {
+export function NuevaVentaWizard({ ramo: ramoInicial, express = false }: { ramo: Ramo; express?: boolean }) {
   const insets = useSafeAreaInsets()
+  const [ramo, setRamo] = useState<Ramo>(ramoInicial)
   const [paso, setPaso] = useState(0)
   const [veh, setVeh] = useState<Vehiculo>({
     marcaId: null,
@@ -52,7 +54,28 @@ export function NuevaVentaWizard({ ramo, express = false }: { ramo: Ramo; expres
   const [cargando, setCargando] = useState<{ [k: string]: boolean }>({})
   const [error, setError] = useState<string | null>(null)
 
+  // Planes de casco (paso Plan) + selección.
+  const [planes, setPlanes] = useState<CascoPlan[]>([])
+  const [planId, setPlanId] = useState<number | null>(null)
+
   const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
+
+  // Al entrar al paso Plan con Casco, carga los planes reales del vehículo.
+  useEffect(() => {
+    if (paso !== 1 || ramo !== 'casco' || !veh.versionAnioId) return
+    let vivo = true
+    setCarga('planes', true)
+    setError(null)
+    setPlanes([])
+    cascoApi
+      .planes(veh.versionAnioId)
+      .then((r) => vivo && setPlanes(r ?? []))
+      .catch((e) => vivo && setError(mensajeDeError(e)))
+      .finally(() => vivo && setCarga('planes', false))
+    return () => {
+      vivo = false
+    }
+  }, [paso, ramo, veh.versionAnioId])
 
   // Marcas al montar.
   useEffect(() => {
@@ -149,6 +172,22 @@ export function NuevaVentaWizard({ ramo, express = false }: { ramo: Ramo; expres
 
         {paso === 0 ? (
           <Tarjeta style={{ padding: 18, gap: 14 }}>
+            {!express ? (
+              <View>
+                <Text style={est.subEtiqueta}>Ramo</Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {(['rcv', 'casco'] as const).map((r) => (
+                    <Boton
+                      key={r}
+                      texto={r === 'rcv' ? 'RCV' : 'Casco'}
+                      variante={ramo === r ? 'primary' : 'soft'}
+                      onPress={() => setRamo(r)}
+                      style={{ flex: 1 }}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : null}
             <Text style={est.pasoTitulo}>Datos del vehículo</Text>
             <Dropdown etiqueta="Marca" opciones={marcas} valor={veh.marcaId} onCambiar={elegirMarca} cargando={cargando.marcas} />
             <Dropdown etiqueta="Modelo" opciones={modelos} valor={veh.modeloId} onCambiar={elegirModelo} cargando={cargando.modelos} deshabilitado={!veh.marcaId} />
@@ -183,6 +222,50 @@ export function NuevaVentaWizard({ ramo, express = false }: { ramo: Ramo; expres
               style={{ marginTop: 6 }}
             />
           </Tarjeta>
+        ) : paso === 1 && ramo === 'casco' ? (
+          // ── Paso Plan · Casco (funcional, planes con prima real) ──────
+          <View style={{ gap: 12 }}>
+            <Text style={est.resumen}>
+              {[veh.marcaNombre, veh.modeloNombre, veh.versionNombre, veh.anio].filter(Boolean).join(' ')} · {veh.placa}
+            </Text>
+            {cargando.planes ? (
+              <Tarjeta style={{ padding: 20 }}>
+                <Text style={est.pendiente}>Consultando planes de casco…</Text>
+              </Tarjeta>
+            ) : planes.length === 0 ? (
+              <Tarjeta style={{ padding: 18 }}>
+                <Text style={est.pendiente}>No hay planes de casco para este vehículo.</Text>
+              </Tarjeta>
+            ) : (
+              planes.map((pl) => {
+                const activo = pl.planId === planId
+                return (
+                  <Pressable key={pl.planId} onPress={() => setPlanId(pl.planId)}>
+                    <Tarjeta style={[{ padding: 16 }, activo && { borderColor: color.primary, borderWidth: 2 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={est.planNombre}>{pl.planNombre}</Text>
+                        {activo ? <Pildora color={color.primary} texto="Seleccionado" /> : null}
+                      </View>
+                      <Text style={est.planPrima}>{moneda(pl.totalPrimaAnual, '$')} <Text style={est.planPrimaSub}>/ año</Text></Text>
+                      <Text style={est.planSuma}>Suma asegurada: {moneda(pl.sumaAsegurada, '$')}</Text>
+                      <View style={{ marginTop: 8, gap: 3 }}>
+                        {pl.coberturas.slice(0, 5).map((c) => (
+                          <View key={c.coberturaId} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={est.covNombre}>{c.nombre}</Text>
+                            <Text style={est.covPrima}>{moneda(c.prima, '$')}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </Tarjeta>
+                  </Pressable>
+                )
+              })
+            )}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(0)} style={{ flex: 1 }} />
+              <Boton texto="Continuar a Cliente →" onPress={() => setPaso(2)} disabled={planId === null} style={{ flex: 1 }} />
+            </View>
+          </View>
         ) : (
           <Tarjeta style={{ padding: 18 }}>
             <View style={est.badge}>
@@ -197,7 +280,7 @@ export function NuevaVentaWizard({ ramo, express = false }: { ramo: Ramo; expres
             </Text>
             <Text style={est.pendiente}>
               {paso === 1
-                ? 'Selección de plan y cálculo de prima (tarifa/coberturas por clase, validación SUDEASEG y APOV).'
+                ? 'Selección de plan RCV y cálculo de prima (tarifa/coberturas por clase, validación SUDEASEG y APOV).'
                 : paso === 2
                   ? 'Datos del cliente/conductor con OCR de cédula y staging en el micro de clientes.'
                   : 'Registro de pago (pago móvil / referencia) y emisión con cuadro y carnet.'}
@@ -245,6 +328,12 @@ const est = StyleSheet.create({
   subEtiqueta: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 8 },
   badge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
   badgeTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
-  resumen: { fontSize: 12.5, color: color.text2, marginTop: 10, lineHeight: 19 },
+  resumen: { fontSize: 12.5, color: color.text2, marginTop: 2, lineHeight: 19 },
   pendiente: { fontSize: 12.5, color: color.text2, marginTop: 10, lineHeight: 19 },
+  planNombre: { fontSize: 15, fontWeight: '800', color: color.text },
+  planPrima: { fontSize: 20, fontWeight: '800', color: color.primary, marginTop: 6 },
+  planPrimaSub: { fontSize: 12, fontWeight: '600', color: color.text3 },
+  planSuma: { fontSize: 12, color: color.text2, marginTop: 2 },
+  covNombre: { fontSize: 11.5, color: color.text2 },
+  covPrima: { fontSize: 11.5, color: color.text, fontWeight: '600' },
 })

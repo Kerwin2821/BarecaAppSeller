@@ -136,6 +136,26 @@ export const comisionApi = {
     bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
 }
 
+// ── Casco: planes con prima (público, para Nueva Venta) ─────
+export interface CascoCobertura {
+  coberturaId: number
+  nombre: string
+  esPorcentaje: boolean
+  prima: number
+  sumaCobertura: number
+}
+export interface CascoPlan {
+  planId: number
+  planNombre: string
+  sumaAsegurada: number
+  totalPrimaAnual: number
+  coberturas: CascoCobertura[]
+}
+export const cascoApi = {
+  planes: (catVersionAnioId: string) =>
+    bff<CascoPlan[]>('/policies/casco/planes', { params: { catVersionAnioId }, sinCierre: true }),
+}
+
 // ── Catálogo de vehículos (público, para Nueva Venta) ───────
 // Cascada marca → modelo → versión → año. Enruta a ServiceRcvCaroni.
 export const catalogoApi = {
