@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { authApi } from './endpoints'
+import { authApi, userApi } from './endpoints'
 import { registrarNoAutorizado } from './api'
 import {
   borrarSesionGuardada,
@@ -189,25 +189,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(base)
     setAvisoCierre(null)
 
-    // 7. Enriquecimiento en segundo plano (nombre real del empleado).
-    if (base.id) {
-      authApi
-        .empleadoByUuid(base.id)
-        .then(async (r) => {
-          const emp = r.data
-          if (!emp) return
-          const enriquecido: CurrentUser = {
-            ...base,
-            firstName: emp.nombres ?? base.firstName,
-            lastName: emp.apellidos ?? base.lastName,
-            employeeEntityId: emp.id,
-            rolSecundario: emp.roles?.rol ?? '',
-          }
-          setUser((u) => (u ? enriquecido : u))
-          await guardarPerfil(enriquecido)
-        })
-        .catch(() => undefined)
-    }
+    // 7. Enriquecimiento en segundo plano (nombre real + IDs de entidad por nivel).
+    void enriquecerPerfil(base).then((enriquecido) => {
+      if (enriquecido) {
+        setUser((u) => (u ? enriquecido : u))
+        void guardarPerfil(enriquecido)
+      }
+    })
 
     return { requiereCambio: false }
   }, [])
@@ -225,18 +213,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refrescarPerfil = useCallback(async () => {
-    if (!user?.id) return
-    const r = await authApi.empleadoByUuid(user.id)
-    const emp = r.data
-    if (!emp) return
-    const actualizado: CurrentUser = {
-      ...user,
-      firstName: emp.nombres ?? user.firstName,
-      lastName: emp.apellidos ?? user.lastName,
-      rolSecundario: emp.roles?.rol ?? user.rolSecundario,
+    if (!user) return
+    const enriquecido = await enriquecerPerfil(user)
+    if (enriquecido) {
+      setUser(enriquecido)
+      await guardarPerfil(enriquecido)
     }
-    setUser(actualizado)
-    await guardarPerfil(actualizado)
   }, [user])
 
   const valor = useMemo<AuthCtx>(
@@ -255,6 +237,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
+}
+
+/**
+ * Enriquece el perfil como el AuthApiService del portal: nombre real del
+ * empleado + IDs numéricos de entidad (para lookups de jerarquía) + código y
+ * comisión prepagada según el nivel (distribuidor / kiosco).
+ */
+async function enriquecerPerfil(base: CurrentUser): Promise<CurrentUser | null> {
+  try {
+    const [emp, entidad] = await Promise.all([
+      base.id ? userApi.empleadoByUuid(base.id).catch(() => null) : Promise.resolve(null),
+      (async () => {
+        if (base.barecaId) return userApi.barecaByUuid(base.barecaId).catch(() => null)
+        if (base.oficinaRegionalId) return userApi.oficinaByUuid(base.oficinaRegionalId).catch(() => null)
+        if (base.distribuidorId) return userApi.distribuidorByUuid(base.distribuidorId).catch(() => null)
+        if (base.kioskoId) return userApi.kioscoByUuid(base.kioskoId).catch(() => null)
+        return null
+      })(),
+    ])
+
+    const out: CurrentUser = { ...base }
+    if (emp) {
+      out.firstName = emp.nombres ?? out.firstName
+      out.lastName = emp.apellidos ?? out.lastName
+      out.employeeEntityId = emp.id
+      out.rolSecundario = emp.roles?.rol ?? out.rolSecundario
+    }
+    if (entidad) {
+      if (base.role === 'BARECA') out.barecaEntityId = entidad.id
+      else if (base.role === 'OFICINA_REGIONAL') out.officeEntityId = entidad.id
+      else if (base.role === 'DISTRIBUIDOR') {
+        out.distributorEntityId = entidad.id
+        out.code = entidad.codigo ?? out.code
+        out.comisionPrepagada = entidad.comisionPrepagada
+      } else if (base.role === 'KIOSCO') {
+        out.kioskEntityId = entidad.id
+        out.code = entidad.codigo ?? out.code
+        out.comisionPrepagada = entidad.comisionPrepagada
+      }
+    }
+    return out
+  } catch {
+    return null
+  }
 }
 
 export function useAuth(): AuthCtx {

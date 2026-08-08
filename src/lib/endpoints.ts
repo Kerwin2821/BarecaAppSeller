@@ -64,9 +64,28 @@ export const authApi = {
     }),
 
   logout: () => bff<ApiResponse<unknown>>('/auth/logout', { method: 'POST', body: {}, sinCierre: true }),
+}
 
-  // Enriquecimiento del perfil por UUID de jerarquía
-  empleadoByUuid: (uuid: string) => bff<ApiResponse<any>>(`/users/empleados/v1/por-uuid/${encodeURIComponent(uuid)}`, { sinCierre: true }),
+// ── Usuarios / jerarquía (enriquecimiento del perfil, filtros JHipster) ──────
+/** Devuelve el primer elemento del arreglo JHipster filtrado por `campo.equals=uuid`. */
+async function primeroPorUuid(recurso: string, campo: string, uuid: string): Promise<any | null> {
+  const r = await bff<any>(`/users/${recurso}`, { params: { [`${campo}.equals`]: uuid, page: 0, size: 1 } })
+  const arr = Array.isArray(r) ? r : (r?.data ?? [])
+  return arr.length > 0 ? arr[0] : null
+}
+
+export const userApi = {
+  empleadoByUuid: (uuid: string) => primeroPorUuid('empleados', 'empleadoId', uuid),
+  barecaByUuid: (uuid: string) => primeroPorUuid('barecas', 'barecaId', uuid),
+  oficinaByUuid: (uuid: string) => primeroPorUuid('oficinas-regionales', 'oficinaRegionalId', uuid),
+  distribuidorByUuid: (uuid: string) => primeroPorUuid('distribuidores', 'distribuidorId', uuid),
+  kioscoByUuid: (uuid: string) => primeroPorUuid('kioscos-puestos', 'kioscosPuestosId', uuid),
+
+  /** Jerarquía completa del equipo del usuario (offices/distributors/kiosks/employees). */
+  teamHierarchy: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/team/hierarchy', { params }),
+
+  productos: () => bff<any>('/users/productos', { params: { page: 0, size: 200 } }),
 }
 
 // ── Pólizas (Mis Ventas) ────────────────────────────────────
