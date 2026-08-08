@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type Di
 import { color, radio } from '../lib/tema'
 
 export function Spinner({ size = 'small', claro = false }: { size?: number | 'small' | 'large'; claro?: boolean }) {
-  return <ActivityIndicator size={size} color={claro ? '#FFFFFF' : color.orange} />
+  return <ActivityIndicator size={size} color={claro ? '#FFFFFF' : color.primary} />
 }
 
 export function CargandoBloque({ texto = 'Cargando…' }: { texto?: string }) {
@@ -37,15 +37,7 @@ export function EstadoError({
   )
 }
 
-export function EstadoVacio({
-  titulo,
-  detalle,
-  accion,
-}: {
-  titulo: string
-  detalle?: string
-  accion?: ReactNode
-}) {
+export function EstadoVacio({ titulo, detalle, accion }: { titulo: string; detalle?: string; accion?: ReactNode }) {
   return (
     <View style={est.vacio}>
       <Text style={est.vacioTitulo}>{titulo}</Text>
@@ -55,7 +47,7 @@ export function EstadoVacio({
   )
 }
 
-/** Bloque gris pulsante, equivalente al .skeleton del portal. */
+/** Bloque gris pulsante (skeleton). */
 export function Skeleton({
   w = '100%',
   h = 12,
@@ -68,7 +60,6 @@ export function Skeleton({
   style?: object
 }) {
   const opacidad = useRef(new Animated.Value(0.55)).current
-
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
@@ -79,7 +70,6 @@ export function Skeleton({
     anim.start()
     return () => anim.stop()
   }, [opacidad])
-
   return (
     <Animated.View
       style={[{ width: w, height: h, borderRadius: r, backgroundColor: color.borderSoft, opacity: opacidad }, style]}
@@ -112,6 +102,6 @@ const est = StyleSheet.create({
   },
   reintentarTexto: { fontSize: 12, fontWeight: '700', color: color.danger },
   vacio: { padding: 30, alignItems: 'center' },
-  vacioTitulo: { fontSize: 13.5, fontWeight: '800', color: color.navy },
+  vacioTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text },
   vacioDetalle: { fontSize: 12, color: color.text2, marginTop: 4, textAlign: 'center' },
 })

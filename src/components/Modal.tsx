@@ -83,7 +83,7 @@ const est = StyleSheet.create({
     padding: 20,
     paddingBottom: 12,
   },
-  titulo: { fontSize: 16.5, fontWeight: '800', color: color.navy, letterSpacing: -0.2 },
+  titulo: { fontSize: 16.5, fontWeight: '800', color: color.text, letterSpacing: -0.2 },
   subtitulo: { fontSize: 11.5, color: color.text2, marginTop: 3 },
   cerrar: {
     width: 30,

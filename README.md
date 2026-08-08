@@ -1,64 +1,79 @@
-# BARECA Vendedores 📱
+# AppVendedores 📱
 
-App móvil (iOS + Android) del **portal de vendedores Winspec**: replica todas las
-funcionalidades de la web administrativa de BARECA Inspección sobre React Native + Expo.
+App móvil (iOS + Android, React Native + Expo) del **portal de vendedores de Bareca**
+(`asesores.barecaonline.com`). Replica el flujo de venta de seguros del portal web `policy-market`
+consumiendo el **BFF** de Bareca (no los backends Java directo).
 
-| Pantalla | Equivalente web | Contenido |
-|----------|-----------------|-----------|
-| Login | `/login` | Credenciales, aviso de sesión expirada, panel de marca |
-| Cambio de clave | `/cambiar-clave` | Obligatorio con clave temporal (`debeCambiarClave`), medidor de fuerza |
-| Dashboard | `/` | 4 KPIs, tendencia semanal/mensual, dona de asegurabilidad, inspecciones recientes |
-| Mapa en Vivo | `/mapa` | Pins por criterio, inspectores en curso con foto, filtros de fecha/criterio, refresco cada 30 s |
-| Expediente | `/inspecciones/:id` | Galería de 8 tomas, video, hallazgos, puntajes por grupo, observaciones, PDF |
-| Usuarios | `/usuarios` | Solo rol `ADMIN`: crear, editar, reenviar clave, activar/desactivar |
-| Mi Perfil | `/perfil` | Datos personales (editables solo por ADMIN), cambio de clave, cierre de sesión |
-
-Reglas compartidas con la web: sesión de **15 minutos** con cuenta regresiva visible,
-renovación por actividad (`GET /auth/me` máx. cada 90 s), cierre automático con aviso,
-media protegida pedida con `Authorization: Bearer`, criterio ≥85 aprobado / 60–84 revisión / <60 rechazado.
+> Contexto de backend/arquitectura: [`../contexto-bareca/CONTEXTO-BARECA.md`](../contexto-bareca/CONTEXTO-BARECA.md).
 
 ## Ambiente (QA)
 
-El backend al que apunta la app vive en [`.env`](.env):
+Configurado en [`.env`](.env):
 
 ```
-EXPO_PUBLIC_API_URL=https://winspec.barecaonline.com/api/v1/admin
+EXPO_PUBLIC_BFF_URL=https://qaasesores.barecaonline.com   # BFF QA (bff-polizas-claude)
+EXPO_PUBLIC_APP_NAME=policy-market                        # x-app-name (flujo autenticado)
+EXPO_PUBLIC_TURNSTILE_SITEKEY=0x4AAAAAACd-1uO91ziroUoi    # captcha del login (público)
 ```
 
-Para cambiar de ambiente basta editar esa URL (no contiene secretos, por eso se versiona).
+Para producción: `EXPO_PUBLIC_BFF_URL=https://asesores.barecaonline.com`.
 
 ## Probar en QA con el QR (ngrok)
 
-Requiere Node 22. El teléfono **no necesita** estar en el mismo Wi-Fi: el QR sale por
-túnel ngrok (`--tunnel`), así que se escanea desde cualquier red.
+Node 22. El teléfono **no** necesita el mismo Wi-Fi: el QR sale por túnel ngrok.
 
 ```bash
 npm install
-npm start          # = expo start --tunnel  →  muestra el QR
+npm start          # = expo start --tunnel  →  QR
 ```
 
-1. Instale **Expo Go** en el teléfono ([App Store](https://apps.apple.com/app/expo-go/id982107779) / [Play Store](https://play.google.com/store/apps/details?id=host.exp.exponent)).
-2. Escanee el QR de la terminal (Android: desde Expo Go · iOS: con la cámara).
-3. La app abre apuntando a QA; entre con un usuario del portal.
+Instala **Expo Go**, escanea el QR (Android: desde Expo Go · iOS: cámara). La app abre contra QA.
 
-> `npm run start:lan` usa la red local (más rápido) si el teléfono sí comparte Wi-Fi.
+> `npm run start:lan` usa la red local si el teléfono comparte Wi-Fi.
 
-La app solo usa módulos incluidos en Expo Go (mapas, SVG, SecureStore, video), por lo
-que **no hace falta development build** para QA. Para el binario de tiendas: `eas build`.
+## Pantallas (menú por rol, igual que el sidebar web)
+
+| Pantalla | Ruta | Estado |
+|----------|------|--------|
+| Login (Turnstile) · Recuperar clave · Cambio de clave | `/login` … | ✅ Contra el BFF real |
+| **Mis Ventas** (pólizas) + detalle con PDF | `/polizas` | ✅ `GET /api/policies/polizas`, PDF `/api/payments/regenerate-pdfs` |
+| **Mis Comisiones** | `/comisiones` | ✅ `/api/policies/comision-transaccion-items/v1/totales` |
+| **Reporte de Pólizas** | `/reporte` | ✅ `/api/reporte/kpis` |
+| **Mi Perfil** | `/perfil` | ✅ Datos de sesión |
+| Notificaciones (campana) | header | ✅ `/api/notifications/mine` |
+| Verificación pública de póliza (QR) | `/verificar/:n` | ✅ `/api/public/documento/ver/:n` |
+| **Nueva Venta** / **Venta Rápida** | `/nueva-venta(-express)` | 🟡 Estructura real de pasos; emisión requiere sesión QA |
+| Equipo · Rachas · Mapa · Soporte · Chat · Ajuste de Pagos · Solicitudes | … | 🟡 Cableadas; se completan con credenciales QA |
+
+Roles: `BARECA`, `OFICINA_REGIONAL`, `DISTRIBUIDOR`, `KIOSCO`, `EMPLEADO` (mismas reglas de visibilidad que la web).
+
+## Autenticación
+
+Login por el BFF (igual que el portal):
+`POST /auth/logins/v1/validar-logins` → `loginId` → `POST /auth/secciones-tokens/v1/generaToken`
+(deja el **JWT en cookie HttpOnly**) → `validar-token` → enriquecimiento del perfil.
+El captcha **Cloudflare Turnstile** se resuelve en un WebView (`react-native-webview`).
+La sesión se restaura al abrir el app validando la cookie. Cierre de sesión limpia cookie + perfil.
+
+> **Para verificar login/venta extremo a extremo hace falta:** credenciales de un vendedor de QA
+> y que el BFF QA acepte el `x-app-name`/captcha desde el app. La cookie HttpOnly la persiste RN
+> de forma nativa; si el BFF exige `SameSite`/dominio estrictos, habría que ajustar en el BFF.
 
 ## Estructura
 
 ```
-app/                 Rutas (expo-router)
-  _layout.tsx        Providers + guardia de sesión (login / cambio de clave / tabs)
-  login.tsx          · cambiar-clave.tsx
-  (tabs)/            Dashboard · mapa · usuarios (ADMIN) · perfil
-  inspecciones/[id]  Expediente digital (modal)
+app/                     Rutas (expo-router)
+  _layout.tsx            Providers + guardia de sesión
+  login · recuperar-contrasena · cambiar-clave
+  verificar/[policyNumber]         (público)
+  (app)/                 Grupo autenticado (drawer + header con campana)
+    index (redirige por rol) · polizas/ · comisiones · reporte · perfil ·
+    nueva-venta(-express) · equipo · rachas · mapa-conexiones ·
+    soporte · chat · ajuste-pagos · solicitudes-modificacion
 src/
-  lib/               api.ts (contrato admin) · sesion.ts (SecureStore) · auth.tsx ·
-                     tipos.ts · criterio.ts · formato.ts · tema.ts (tokens del portal)
-  hooks/             useApi · useMedia (media con Authorization)
-  components/        Charts (SVG a mano) · Ui · Modal · Toast · Estados · MedidorClave …
+  lib/    api.ts (BFF) · endpoints.ts · auth.tsx · sesion.ts (SecureStore) ·
+          tipos.ts · roles.ts · polizas.ts · formato.ts · tema.ts
+  components/  Drawer · AppHeader · CaptchaTurnstile · Ui · Estados · Toast · Wizard …
 ```
 
 ## Verificación

@@ -10,19 +10,19 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Spinner } from './Estados'
-import { color, fuenteMono, radio } from '../lib/tema'
+import { color, fuenteMono, radio, sombra } from '../lib/tema'
 
 /** Tarjeta blanca con borde suave, equivalente al .card del portal. */
 export function Tarjeta({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return <View style={[est.tarjeta, style]}>{children}</View>
 }
 
-type VarianteBoton = 'orange' | 'navy' | 'soft' | 'ghost' | 'peligro' | 'mini' | 'miniSoft'
+type VarianteBoton = 'primary' | 'accent' | 'soft' | 'ghost' | 'peligro' | 'mini' | 'exito'
 
 export function Boton({
   texto,
   onPress,
-  variante = 'orange',
+  variante = 'primary',
   disabled = false,
   cargando = false,
   style,
@@ -34,25 +34,26 @@ export function Boton({
   cargando?: boolean
   style?: StyleProp<ViewStyle>
 }) {
-  const esMini = variante === 'mini' || variante === 'miniSoft'
+  const esMini = variante === 'mini'
   const fondo: Record<VarianteBoton, ViewStyle> = {
-    orange: { backgroundColor: color.orange },
-    navy: { backgroundColor: color.navy },
-    soft: { backgroundColor: color.bgCard, borderWidth: 1, borderColor: color.borderSoft },
+    primary: { backgroundColor: color.primary },
+    accent: { backgroundColor: color.accent },
+    exito: { backgroundColor: color.success },
+    soft: { backgroundColor: color.bgCard, borderWidth: 1, borderColor: color.border },
     ghost: { backgroundColor: 'transparent' },
     peligro: { backgroundColor: color.white, borderWidth: 1, borderColor: color.dangerBorder },
     mini: { backgroundColor: color.white, borderWidth: 1, borderColor: color.border },
-    miniSoft: { backgroundColor: color.navyTint },
   }
   const textoColor: Record<VarianteBoton, string> = {
-    orange: '#FFFFFF',
-    navy: '#FFFFFF',
+    primary: '#FFFFFF',
+    accent: '#FFFFFF',
+    exito: '#FFFFFF',
     soft: color.text2,
-    ghost: color.navy,
+    ghost: color.primary,
     peligro: color.danger,
     mini: color.text2,
-    miniSoft: color.navy,
   }
+  const claro = variante === 'primary' || variante === 'accent' || variante === 'exito'
   return (
     <Pressable
       onPress={onPress}
@@ -66,7 +67,7 @@ export function Boton({
         style,
       ]}
     >
-      {cargando ? <Spinner size={14} claro={variante === 'orange' || variante === 'navy'} /> : null}
+      {cargando ? <Spinner size={14} claro={claro} /> : null}
       <Text style={[est.botonTexto, esMini && { fontSize: 11 }, { color: textoColor[variante] }]}>
         {texto}
       </Text>
@@ -74,7 +75,6 @@ export function Boton({
   )
 }
 
-/** Etiqueta + campo de texto, equivalente al .field-label + .input del portal. */
 export function Campo({
   etiqueta,
   error = false,
@@ -86,7 +86,7 @@ export function Campo({
     <View style={style as StyleProp<ViewStyle>}>
       {etiqueta ? <Text style={est.campoEtiqueta}>{etiqueta}</Text> : null}
       <TextInput
-        placeholderTextColor={color.text3}
+        placeholderTextColor={color.text4}
         {...props}
         style={[
           est.campo,
@@ -99,28 +99,23 @@ export function Campo({
   )
 }
 
-export function Alerta({ tipo, children }: { tipo: 'info' | 'error'; children: ReactNode }) {
-  const esError = tipo === 'error'
+export function Alerta({ tipo, children }: { tipo: 'info' | 'error' | 'exito'; children: ReactNode }) {
+  const estilos =
+    tipo === 'error'
+      ? { bg: color.dangerBg, bd: color.dangerBorder, fg: color.danger }
+      : tipo === 'exito'
+        ? { bg: color.successBg, bd: color.success, fg: color.success }
+        : { bg: color.primaryLight, bd: color.primary, fg: color.primaryDark }
   return (
-    <View
-      style={[
-        est.alerta,
-        esError
-          ? { backgroundColor: color.dangerBg, borderColor: color.dangerBorder }
-          : { backgroundColor: color.navyTint, borderColor: color.navyTint2 },
-      ]}
-    >
-      <Text style={{ fontSize: 12, lineHeight: 17.5, color: esError ? color.danger : color.navy }}>
-        {children}
-      </Text>
+    <View style={[est.alerta, { backgroundColor: estilos.bg, borderColor: estilos.bd }]}>
+      <Text style={{ fontSize: 12, lineHeight: 17.5, color: estilos.fg }}>{children}</Text>
     </View>
   )
 }
 
-/** Píldora tintada con el color del criterio (estiloPildora del portal). */
 export function Pildora({ texto, color: c }: { texto: string; color: string }) {
   return (
-    <View style={[est.pildora, { backgroundColor: `${c}14` }]}>
+    <View style={[est.pildora, { backgroundColor: `${c}1A` }]}>
       <Text style={{ fontSize: 11, fontWeight: '700', color: c }}>{texto}</Text>
     </View>
   )
@@ -142,40 +137,25 @@ export function Chip({
   )
 }
 
-export function Avatar({
-  texto,
-  size = 30,
-  invertido = false,
-}: {
-  texto: string
-  size?: number
-  invertido?: boolean
-}) {
+export function Avatar({ texto, size = 32, invertido = false }: { texto: string; size?: number; invertido?: boolean }) {
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: invertido ? color.navy : color.navyTint,
+        backgroundColor: invertido ? color.primary : color.primaryLight,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text
-        style={{
-          fontSize: size * 0.34,
-          fontWeight: '800',
-          color: invertido ? '#FFFFFF' : color.navy,
-        }}
-      >
+      <Text style={{ fontSize: size * 0.34, fontWeight: '800', color: invertido ? '#FFFFFF' : color.primary }}>
         {texto}
       </Text>
     </View>
   )
 }
 
-/** Título de sección dentro del expediente / pantallas. */
 export function TituloSeccion({ children, style }: { children: string; style?: StyleProp<ViewStyle> }) {
   return <Text style={[est.tituloSeccion, style as object]}>{children}</Text>
 }
@@ -185,12 +165,8 @@ const est = StyleSheet.create({
     backgroundColor: color.white,
     borderRadius: radio.lg,
     borderWidth: 1,
-    borderColor: color.borderCard,
-    shadowColor: '#101336',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    borderColor: color.borderSoft,
+    ...sombra.card,
   },
   boton: {
     flexDirection: 'row',
@@ -203,12 +179,7 @@ const est = StyleSheet.create({
   },
   botonMini: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radio.md },
   botonTexto: { fontSize: 13, fontWeight: '700' },
-  campoEtiqueta: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: color.text,
-    marginBottom: 6,
-  },
+  campoEtiqueta: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
   campo: {
     borderWidth: 1,
     borderColor: color.borderInput,
@@ -219,12 +190,7 @@ const est = StyleSheet.create({
     color: color.text,
     backgroundColor: color.white,
   },
-  alerta: {
-    borderWidth: 1,
-    borderRadius: radio.md + 2,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
+  alerta: { borderWidth: 1, borderRadius: radio.md + 2, paddingVertical: 11, paddingHorizontal: 14 },
   pildora: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -233,11 +199,5 @@ const est = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 99,
   },
-  tituloSeccion: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: color.navy,
-    marginTop: 24,
-    marginBottom: 10,
-  },
+  tituloSeccion: { fontSize: 13, fontWeight: '800', color: color.text, marginTop: 22, marginBottom: 10 },
 })

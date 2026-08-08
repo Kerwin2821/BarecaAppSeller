@@ -1,121 +1,98 @@
-import { borrarSesion, refrescarExpiracion, tokenActual } from './sesion'
-import type {
-  CrearUsuarioReq,
-  DashboardRes,
-  EditarUsuarioReq,
-  Expediente,
-  InspeccionItem,
-  LoginRes,
-  MeRes,
-  OkRes,
-  PaginaInspecciones,
-  PuntoMapa,
-  UsuarioPortal,
-} from './tipos'
+import type { ApiResponse } from './tipos'
 
 /**
- * Base del API admin (ambiente QA por defecto, ver .env).
- * A diferencia del portal web no hay proxy: la app siempre llama al dominio completo.
+ * Cliente del BFF de Bareca (portal de vendedores). A diferencia del portal web,
+ * la app no usa proxy: siempre llama al dominio completo del BFF (QA por defecto).
+ *
+ * Autenticación: el BFF entrega el JWT en una **cookie HttpOnly** al hacer
+ * `generaToken`. React Native persiste y reenvía cookies por host de forma
+ * nativa, así que las peticiones siguientes viajan autenticadas sin que el
+ * cliente toque el token. El `x-app-name` identifica el flujo autenticado.
  */
-export const API_BASE: string = (
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://winspec.barecaonline.com/api/v1/admin'
+export const BFF_URL: string = (
+  process.env.EXPO_PUBLIC_BFF_URL ?? 'https://qaasesores.barecaonline.com'
 ).replace(/\/$/, '')
+
+export const API_PREFIX = '/api'
+export const API_BASE = `${BFF_URL}${API_PREFIX}`
+export const APP_NAME = process.env.EXPO_PUBLIC_APP_NAME ?? 'policy-market'
 
 export class ApiException extends Error {
   readonly status: number
-  readonly codigo: string
-
-  constructor(status: number, codigo: string, mensaje: string) {
+  constructor(status: number, mensaje: string) {
     super(mensaje)
     this.name = 'ApiException'
     this.status = status
-    this.codigo = codigo
   }
 }
 
-/** Motivo por el que se cerró la sesión, para avisar en /login. */
-export type MotivoCierre = 'expirada' | 'manual'
-
-let alExpirar: ((motivo: MotivoCierre) => void) | null = null
-
-/** El AuthProvider registra aquí la reacción a un 401 / sesión vencida. */
-export function registrarCierreDeSesion(fn: (motivo: MotivoCierre) => void) {
-  alExpirar = fn
+/** Reacción global a un 401 (sesión inválida), la registra el AuthProvider. */
+let alNoAutorizado: (() => void) | null = null
+export function registrarNoAutorizado(fn: () => void) {
+  alNoAutorizado = fn
 }
 
-function cerrarPorNoAutorizado() {
-  borrarSesion()
-  if (alExpirar) alExpirar('expirada')
-}
-
-/** Ruta de un endpoint del portal: siempre cuelga de la base del API. */
-function urlApi(ruta: string): string {
+function url(ruta: string): string {
+  if (/^https?:\/\//i.test(ruta)) return ruta
   return `${API_BASE}/${ruta.replace(/^\//, '')}`
 }
 
-/**
- * Resuelve una URL de media que devuelve el backend. Puede llegar absoluta
- * (`https://…`), con la base ya incluida (`/api/v1/admin/media/…`), como ruta
- * del contrato (`/media/full/…`) o relativa a la base (`media/full/…`).
- */
-export function resolverUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url
-  if (url.startsWith(`${API_BASE}/`)) return url
-  if (/^\/?media\//.test(url)) return urlApi(url)
-  if (url.startsWith('/')) {
-    // Ruta absoluta del dominio (p. ej. /api/v1/admin/media/…): se antepone el origen.
-    const origen = API_BASE.replace(/^(https?:\/\/[^/]+).*$/i, '$1')
-    return `${origen}${url}`
-  }
-  return urlApi(url)
-}
-
-/** Cabeceras con el token vigente, para pedir media protegida (Image/Video). */
-export function cabecerasMedia(): Record<string, string> {
-  const t = tokenActual()
-  return t ? { Authorization: `Bearer ${t}` } : {}
-}
-
-function cabeceras(conJson: boolean): Record<string, string> {
-  const h: Record<string, string> = { Accept: 'application/json' }
-  if (conJson) h['Content-Type'] = 'application/json'
-  const t = tokenActual()
-  if (t) h['Authorization'] = `Bearer ${t}`
-  return h
-}
-
-interface OpcionesPeticion {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+interface Opciones {
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
   body?: unknown
   signal?: AbortSignal
-  /** No cerrar la sesión ante un 401 (se usa en el login). */
-  sinCierreAutomatico?: boolean
+  /** No disparar el cierre de sesión global ante un 401 (login / recuperación). */
+  sinCierre?: boolean
+  /** Query params. */
+  params?: Record<string, string | number | undefined | null>
 }
 
-async function peticion<T>(ruta: string, opts: OpcionesPeticion = {}): Promise<T> {
-  const { method = 'GET', body, signal, sinCierreAutomatico } = opts
+function qs(params?: Record<string, string | number | undefined | null>): string {
+  if (!params) return ''
+  const p: string[] = []
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') {
+      p.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    }
+  }
+  return p.length ? `?${p.join('&')}` : ''
+}
+
+/**
+ * Petición cruda al BFF. Devuelve el JSON tal cual (no desenvuelve `data`):
+ * el contrato mezcla `{data,statusCode,message}` y `{success,data}`, así que
+ * cada llamada decide cómo leerlo.
+ */
+export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promise<T> {
+  const { method = 'GET', body, signal, sinCierre, params } = opts
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'x-app-name': APP_NAME,
+  }
+  const esForm = typeof FormData !== 'undefined' && body instanceof FormData
+  if (body !== undefined && !esForm) headers['Content-Type'] = 'application/json'
 
   let res: Response
   try {
-    res = await fetch(urlApi(ruta), {
+    res = await fetch(url(ruta) + qs(params), {
       method,
-      headers: cabeceras(body !== undefined),
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers,
+      // RN ignora `credentials` pero persiste cookies por host de forma nativa.
+      credentials: 'include',
+      body:
+        body === undefined ? undefined : esForm ? (body as FormData) : JSON.stringify(body),
       signal,
     })
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw e
-    throw new ApiException(0, 'red', 'No se pudo conectar con el servidor. Verifique su conexión.')
+    throw new ApiException(0, 'No se pudo conectar con el servidor. Verifique su conexión.')
   }
 
-  if (res.status === 401 && !sinCierreAutomatico) {
-    cerrarPorNoAutorizado()
-    throw new ApiException(401, 'no_autorizado', 'Su sesión expiró. Vuelva a iniciar sesión.')
+  if (res.status === 401 && !sinCierre) {
+    if (alNoAutorizado) alNoAutorizado()
+    throw new ApiException(401, 'Su sesión expiró. Vuelva a iniciar sesión.')
   }
-
-  // Renovación de sesión por cabecera, si el backend la envía.
-  const cabExpira = res.headers.get('X-Expira-En')
-  if (cabExpira) refrescarExpiracion(cabExpira)
 
   if (res.status === 204) return undefined as T
 
@@ -130,95 +107,28 @@ async function peticion<T>(ruta: string, opts: OpcionesPeticion = {}): Promise<T
   }
 
   if (!res.ok) {
-    const e = datos as { error?: string; mensaje?: string } | null
-    throw new ApiException(
-      res.status,
-      e?.error ?? 'error',
-      e?.mensaje ?? `El servidor respondió ${res.status}.`,
-    )
-  }
-
-  // Cualquier respuesta que traiga `expiraEn` refresca la cuenta regresiva.
-  if (datos && typeof datos === 'object' && 'expiraEn' in datos) {
-    const v = (datos as { expiraEn?: unknown }).expiraEn
-    if (typeof v === 'string') refrescarExpiracion(v)
+    const e = datos as { message?: string; error?: string } | null
+    throw new ApiException(res.status, e?.message ?? e?.error ?? `El servidor respondió ${res.status}.`)
   }
 
   return datos as T
 }
 
-export const api = {
-  // ── Autenticación ───────────────────────────────────────
-  login: (usuario: string, password: string) =>
-    peticion<LoginRes>('/auth/login', {
-      method: 'POST',
-      body: { usuario, password },
-      sinCierreAutomatico: true,
-    }),
-
-  cambiarClave: (actual: string, nueva: string) =>
-    peticion<OkRes>('/auth/cambiar-clave', { method: 'POST', body: { actual, nueva } }),
-
-  logout: () => peticion<void>('/auth/logout', { method: 'POST' }),
-
-  me: (signal?: AbortSignal) => peticion<MeRes>('/auth/me', { signal }),
-
-  // ── Dashboard ───────────────────────────────────────────
-  dashboard: (signal?: AbortSignal) => peticion<DashboardRes>('/dashboard', { signal }),
-
-  // ── Inspecciones ────────────────────────────────────────
-  inspecciones: (
-    p: { page?: number; size?: number; estado?: string; q?: string } = {},
-    signal?: AbortSignal,
-  ) =>
-    peticion<PaginaInspecciones | InspeccionItem[]>(
-      `/inspections${qs({ page: p.page, size: p.size, estado: p.estado, q: p.q })}`,
-      { signal },
-    ),
-
-  mapa: (p: { desde?: string; hasta?: string } = {}, signal?: AbortSignal) =>
-    peticion<PuntoMapa[]>(`/inspections/mapa${qs({ desde: p.desde, hasta: p.hasta })}`, { signal }),
-
-  expediente: (id: string, signal?: AbortSignal) =>
-    peticion<Expediente>(`/inspections/${encodeURIComponent(id)}`, { signal }),
-
-  /** URL completa del PDF del peritaje (se descarga con el token en la cabecera). */
-  urlReportePdf: (id: string) => urlApi(`/inspections/${encodeURIComponent(id)}/report.pdf`),
-
-  // ── Usuarios del portal ─────────────────────────────────
-  usuarios: (signal?: AbortSignal) => peticion<UsuarioPortal[]>('/users', { signal }),
-
-  crearUsuario: (datos: CrearUsuarioReq) =>
-    peticion<UsuarioPortal>('/users', { method: 'POST', body: datos }),
-
-  editarUsuario: (id: string, datos: EditarUsuarioReq) =>
-    peticion<UsuarioPortal>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: datos }),
-
-  resetClave: (id: string) =>
-    peticion<OkRes>(`/users/${encodeURIComponent(id)}/reset-clave`, { method: 'POST' }),
-
-  desactivarUsuario: (id: string) =>
-    peticion<void>(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-}
-
-function qs(params: Record<string, string | number | undefined | null>): string {
-  const p: string[] = []
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== '') {
-      p.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-    }
+/** Desenvuelve el `data` del envoltorio del BFF (soporta ambas formas). */
+export function desenvolver<T>(r: ApiResponse<T> | T): T {
+  if (r && typeof r === 'object' && 'data' in (r as object)) {
+    return (r as ApiResponse<T>).data
   }
-  return p.length ? `?${p.join('&')}` : ''
-}
-
-/** Normaliza la lista de inspecciones venga paginada o como arreglo plano. */
-export function normalizarPagina(r: PaginaInspecciones | InspeccionItem[]): PaginaInspecciones {
-  if (Array.isArray(r)) return { items: r, total: r.length, page: 0 }
-  return { items: r.items ?? [], total: r.total ?? 0, page: r.page ?? 0 }
+  return r as T
 }
 
 export function mensajeDeError(e: unknown): string {
   if (e instanceof ApiException) return e.message
   if (e instanceof Error) return e.message
   return 'Ocurrió un error inesperado.'
+}
+
+/** URL absoluta de un recurso del BFF (para abrir PDFs, imágenes, etc.). */
+export function urlBff(ruta: string): string {
+  return url(ruta)
 }

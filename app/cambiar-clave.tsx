@@ -1,25 +1,23 @@
 import { useState } from 'react'
-import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/lib/auth'
+import { authApi } from '@/lib/endpoints'
 import { mensajeDeError } from '@/lib/api'
 import { MedidorClave, fuerzaClave } from '@/components/MedidorClave'
-import { Alerta, Avatar, Boton, Campo, Tarjeta } from '@/components/Ui'
-import { iniciales, reloj } from '@/lib/formato'
-import { color, fuenteMono } from '@/lib/tema'
+import { Alerta, Boton, Campo, Tarjeta } from '@/components/Ui'
+import { color } from '@/lib/tema'
 
+/**
+ * Cambio de clave obligatorio (primer ingreso o expirada). Tras actualizar, se
+ * vuelve al login para iniciar sesión con la nueva contraseña (igual que el
+ * portal, que hace logout y pide re-login).
+ */
 export default function CambiarClave() {
   const insets = useSafeAreaInsets()
-  const { admin, restantes, cambiarClave, cerrarSesion } = useAuth()
+  const router = useRouter()
+  const { cambioClave, cerrarSesion } = useAuth()
 
   const [actual, setActual] = useState('')
   const [nueva, setNueva] = useState('')
@@ -28,17 +26,13 @@ export default function CambiarClave() {
   const [enviando, setEnviando] = useState(false)
 
   const enviar = async () => {
-    if (enviando) return
-    if (!actual) {
-      setError('Ingrese su clave temporal actual.')
+    if (enviando || !cambioClave) return
+    if (cambioClave.motivo === 'expired' && !actual) {
+      setError('Ingrese su contraseña actual.')
       return
     }
     if (nueva.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
-      return
-    }
-    if (nueva === actual) {
-      setError('La nueva contraseña debe ser distinta de la actual.')
       return
     }
     if (nueva !== confirmacion) {
@@ -48,62 +42,56 @@ export default function CambiarClave() {
     setEnviando(true)
     setError(null)
     try {
-      await cambiarClave(actual, nueva)
-      // La guardia del layout raíz redirige al Dashboard.
+      await authApi.actualizarPass({
+        loginId: cambioClave.loginId,
+        passActual: actual || undefined,
+        passNueva: nueva,
+      })
+      await cerrarSesion()
+      router.replace('/login')
     } catch (err) {
       setError(mensajeDeError(err))
       setEnviando(false)
     }
   }
 
+  const cancelar = async () => {
+    await cerrarSesion()
+    router.replace('/login')
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         style={{ flex: 1, backgroundColor: color.bgApp }}
-        contentContainerStyle={{
-          paddingTop: insets.top + 26,
-          paddingBottom: insets.bottom + 26,
-          paddingHorizontal: 20,
-        }}
+        contentContainerStyle={{ paddingTop: insets.top + 26, paddingBottom: insets.bottom + 26, paddingHorizontal: 20 }}
         keyboardShouldPersistTaps="handled"
       >
         <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
-
-        <Tarjeta style={{ padding: 24 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <Avatar texto={iniciales(admin?.nombre)} size={40} invertido />
-            <View style={{ flex: 1 }}>
-              <Text style={est.titulo}>Actualice su contraseña</Text>
-              <Text style={est.subtitulo}>
-                {admin?.nombre} · {admin?.usuario}
-              </Text>
-            </View>
+        <Tarjeta style={{ padding: 22 }}>
+          <Text style={est.titulo}>Actualiza tu contraseña</Text>
+          <View style={{ marginTop: 14, marginBottom: 18 }}>
+            <Alerta tipo="info">{cambioClave?.mensaje ?? 'Debes cambiar tu contraseña para continuar.'}</Alerta>
           </View>
 
-          <View style={{ marginBottom: 20 }}>
-            <Alerta tipo="info">
-              Su acceso fue creado con una clave temporal. Debe cambiarla antes de usar el portal.
-            </Alerta>
-          </View>
-
-          <Campo
-            etiqueta="Clave temporal actual"
-            placeholder="••••••••••"
-            secureTextEntry
-            autoComplete="current-password"
-            value={actual}
-            onChangeText={(t) => {
-              setActual(t)
-              setError(null)
-            }}
-            style={{ marginBottom: 14 }}
-          />
+          {cambioClave?.motivo === 'expired' ? (
+            <Campo
+              etiqueta="Contraseña actual"
+              placeholder="••••••••••"
+              secureTextEntry
+              value={actual}
+              onChangeText={(t) => {
+                setActual(t)
+                setError(null)
+              }}
+              style={{ marginBottom: 14 }}
+            />
+          ) : null}
 
           <Campo
             etiqueta="Nueva contraseña"
             placeholder="Mínimo 8 caracteres"
             secureTextEntry
-            autoComplete="new-password"
             value={nueva}
             onChangeText={(t) => {
               setNueva(t)
@@ -116,7 +104,6 @@ export default function CambiarClave() {
             etiqueta="Confirme la nueva contraseña"
             placeholder="Repita la contraseña"
             secureTextEntry
-            autoComplete="new-password"
             value={confirmacion}
             onChangeText={(t) => {
               setConfirmacion(t)
@@ -124,9 +111,6 @@ export default function CambiarClave() {
             }}
             style={{ marginTop: 14 }}
           />
-          {confirmacion.length > 0 && confirmacion !== nueva ? (
-            <Text style={est.noCoincide}>Las contraseñas no coinciden.</Text>
-          ) : null}
 
           {error ? (
             <View style={{ marginTop: 14 }}>
@@ -135,19 +119,15 @@ export default function CambiarClave() {
           ) : null}
 
           <Boton
-            texto={enviando ? 'Guardando…' : 'Cambiar contraseña y continuar'}
+            texto={enviando ? 'Guardando…' : 'Cambiar contraseña'}
             onPress={enviar}
             cargando={enviando}
             disabled={nueva.length < 8 || fuerzaClave(nueva) < 2}
             style={{ marginTop: 20, paddingVertical: 13 }}
           />
-
-          <View style={est.pieCard}>
-            <Text style={est.expira}>Sesión expira en {reloj(restantes)}</Text>
-            <Pressable onPress={cerrarSesion}>
-              <Text style={est.salir}>Cerrar sesión</Text>
-            </Pressable>
-          </View>
+          <Pressable onPress={cancelar} style={{ marginTop: 14, alignSelf: 'center' }}>
+            <Text style={est.cancelar}>Cancelar e ir al inicio de sesión</Text>
+          </Pressable>
         </Tarjeta>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -155,19 +135,7 @@ export default function CambiarClave() {
 }
 
 const est = StyleSheet.create({
-  logo: { height: 34, width: 130, resizeMode: 'contain', alignSelf: 'center', marginBottom: 20 },
-  titulo: { fontSize: 17, fontWeight: '800', color: color.navy, letterSpacing: -0.2 },
-  subtitulo: { fontSize: 11.5, color: color.text2, marginTop: 2 },
-  noCoincide: { fontSize: 11, color: color.danger, marginTop: 6 },
-  pieCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: color.borderRow,
-  },
-  expira: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
-  salir: { fontSize: 11.5, fontWeight: '600', color: color.text2 },
+  logo: { width: 150, height: 60, resizeMode: 'contain', alignSelf: 'center', marginBottom: 18 },
+  titulo: { fontSize: 18, fontWeight: '800', color: color.text },
+  cancelar: { fontSize: 12, fontWeight: '600', color: color.text3 },
 })

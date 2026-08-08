@@ -3,48 +3,59 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/lib/auth'
 import { mensajeDeError } from '@/lib/api'
 import { Alerta, Boton, Campo } from '@/components/Ui'
-import { color, fuenteMono, radio } from '@/lib/tema'
+import { CaptchaTurnstile } from '@/components/CaptchaTurnstile'
+import { color } from '@/lib/tema'
 
-/**
- * Datos del panel de marca: son atributos del producto documentados
- * (8 tomas esenciales, sesión de 15 min), no métricas de operación.
- */
-const DESTACADOS = [
-  { valor: '360°', nota: 'cobertura del vehículo' },
-  { valor: '8 tomas', nota: 'evidencia esencial' },
-  { valor: '15 min', nota: 'sesión segura' },
+const HAY_CAPTCHA = !!process.env.EXPO_PUBLIC_TURNSTILE_SITEKEY
+
+// Logos a color (el de Caroní es blanco, para fondo oscuro, así que no va aquí).
+const PROVEEDORES = [
+  require('../assets/logos/logo-estar-seguros.png'),
+  require('../assets/logos/logo-laoccidental.png'),
 ]
 
 export default function Login() {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
   const { iniciarSesion, avisoCierre, limpiarAviso } = useAuth()
 
-  const [usuario, setUsuario] = useState('')
+  const [identificador, setIdentificador] = useState('')
   const [password, setPassword] = useState('')
+  const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
   const enviar = async () => {
     if (enviando) return
-    if (!usuario.trim() || !password) {
-      setError('Ingrese su usuario y contraseña.')
+    if (!identificador.trim() || !password) {
+      setError('Ingrese su usuario/correo y contraseña.')
+      return
+    }
+    if (HAY_CAPTCHA && !token) {
+      setError('Complete la verificación de seguridad.')
       return
     }
     setEnviando(true)
     setError(null)
     limpiarAviso()
     try {
-      await iniciarSesion(usuario.trim(), password)
-      // La guardia del layout raíz redirige a "/" o a /cambiar-clave.
+      const { requiereCambio } = await iniciarSesion({
+        identificador: identificador.trim(),
+        password,
+        turnstileToken: token ?? '',
+      })
+      router.replace(requiereCambio ? '/cambiar-clave' : '/')
     } catch (err) {
       setError(mensajeDeError(err))
       setEnviando(false)
@@ -55,19 +66,12 @@ export default function Login() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         style={{ flex: 1, backgroundColor: color.white }}
-        contentContainerStyle={{
-          paddingTop: insets.top + 34,
-          paddingBottom: insets.bottom + 26,
-          paddingHorizontal: 28,
-        }}
+        contentContainerStyle={{ paddingTop: insets.top + 40, paddingBottom: insets.bottom + 30, paddingHorizontal: 28 }}
         keyboardShouldPersistTaps="handled"
       >
         <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
-
-        <Text style={est.titulo}>Bienvenido al Portal</Text>
-        <Text style={est.parrafo}>
-          Ingrese sus credenciales para acceder al sistema de peritaje Winspec.
-        </Text>
+        <Text style={est.titulo}>Portal de Vendedores</Text>
+        <Text style={est.parrafo}>Ingrese sus credenciales para cotizar y emitir pólizas.</Text>
 
         {avisoCierre ? (
           <View style={{ marginBottom: 16 }}>
@@ -76,25 +80,22 @@ export default function Login() {
         ) : null}
 
         <Campo
-          etiqueta="Usuario"
-          placeholder="admin"
+          etiqueta="Usuario, correo o teléfono"
+          placeholder="tu.usuario o correo@bareca.com"
           autoCapitalize="none"
           autoCorrect={false}
-          autoComplete="username"
-          value={usuario}
+          value={identificador}
           error={!!error}
           onChangeText={(t) => {
-            setUsuario(t)
+            setIdentificador(t)
             setError(null)
           }}
           style={{ marginBottom: 16 }}
         />
-
         <Campo
           etiqueta="Contraseña"
           placeholder="••••••••••"
           secureTextEntry
-          autoComplete="current-password"
           value={password}
           error={!!error}
           onChangeText={(t) => {
@@ -105,6 +106,12 @@ export default function Login() {
           returnKeyType="go"
         />
 
+        {HAY_CAPTCHA ? (
+          <View style={{ marginTop: 16, alignItems: 'center' }}>
+            <CaptchaTurnstile onToken={setToken} onError={(m) => setError(m)} />
+          </View>
+        ) : null}
+
         {error ? (
           <View style={{ marginTop: 14 }}>
             <Alerta tipo="error">{error}</Alerta>
@@ -112,79 +119,39 @@ export default function Login() {
         ) : null}
 
         <Boton
-          texto={enviando ? 'Verificando…' : 'Iniciar Sesión →'}
+          texto={enviando ? 'Verificando…' : 'Iniciar Sesión'}
           onPress={enviar}
           cargando={enviando}
-          style={{ marginTop: 24, paddingVertical: 14 }}
+          style={{ marginTop: 20, paddingVertical: 14 }}
         />
 
-        {/* ── Panel de marca ─────────────────────────────── */}
-        <View style={est.marco}>
-          <Image source={require('../assets/login-1.png')} style={est.ilustracion} />
-        </View>
-        <Text style={est.marcaTitulo}>Peritaje vehicular inteligente</Text>
-        <Text style={est.marcaTexto}>
-          Inspecciones geolocalizadas, evidencia multimedia y criterio de asegurabilidad en tiempo
-          real para su flota.
-        </Text>
+        <Pressable onPress={() => router.push('/recuperar-contrasena')} style={{ marginTop: 16, alignSelf: 'center' }}>
+          <Text style={est.olvido}>¿Olvidaste tu contraseña?</Text>
+        </Pressable>
 
-        <View style={est.destacados}>
-          {DESTACADOS.map((d, i) => (
-            <View key={d.valor} style={{ flexDirection: 'row', gap: 18 }}>
-              {i > 0 && <View style={{ width: 1, backgroundColor: color.border }} />}
-              <View style={{ alignItems: 'center' }}>
-                <Text style={est.destacadoValor}>{d.valor}</Text>
-                <Text style={est.destacadoNota}>{d.nota}</Text>
-              </View>
-            </View>
-          ))}
+        <View style={est.proveedores}>
+          <Text style={est.proveedoresTitulo}>Aseguradoras aliadas</Text>
+          <View style={est.proveedoresFila}>
+            {PROVEEDORES.map((src, i) => (
+              <Image key={i} source={src} style={est.provLogo} />
+            ))}
+          </View>
         </View>
 
-        <Text style={est.pie}>
-          © {new Date().getFullYear()} Bareca C.A. · Sistema Winspec de Inspección Vehicular
-        </Text>
+        <Text style={est.pie}>© {new Date().getFullYear()} Bareca C.A. · Corretaje de Seguros</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   )
 }
 
 const est = StyleSheet.create({
-  logo: { height: 40, width: 150, resizeMode: 'contain', marginBottom: 30 },
-  titulo: { fontSize: 24, fontWeight: '800', color: color.navy, letterSpacing: -0.4, marginBottom: 6 },
-  parrafo: { fontSize: 13, color: color.text2, marginBottom: 26, lineHeight: 19 },
-  marco: {
-    marginTop: 38,
-    backgroundColor: color.navyTint,
-    borderWidth: 1,
-    borderColor: color.borderSoft,
-    borderRadius: radio.xl,
-    padding: 22,
-    alignItems: 'center',
-  },
-  ilustracion: { width: '86%', height: 190, resizeMode: 'contain' },
-  marcaTitulo: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: color.navy,
-    textAlign: 'center',
-    marginTop: 20,
-    letterSpacing: -0.2,
-  },
-  marcaTexto: {
-    fontSize: 12.5,
-    color: color.text2,
-    textAlign: 'center',
-    lineHeight: 19,
-    marginTop: 5,
-    paddingHorizontal: 8,
-  },
-  destacados: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 18,
-    marginTop: 20,
-  },
-  destacadoValor: { fontSize: 16, fontWeight: '700', color: color.navy, fontFamily: fuenteMono },
-  destacadoNota: { fontSize: 10, color: color.text3, marginTop: 2 },
-  pie: { marginTop: 34, fontSize: 11, color: color.text3, textAlign: 'center' },
+  logo: { width: 168, height: 78, resizeMode: 'contain', alignSelf: 'center', marginBottom: 20 },
+  titulo: { fontSize: 23, fontWeight: '800', color: color.text, letterSpacing: -0.4, textAlign: 'center' },
+  parrafo: { fontSize: 13, color: color.text2, marginTop: 6, marginBottom: 26, textAlign: 'center', lineHeight: 19 },
+  olvido: { fontSize: 12.5, fontWeight: '600', color: color.primary },
+  proveedores: { marginTop: 40, alignItems: 'center' },
+  proveedoresTitulo: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, color: color.text4, marginBottom: 12 },
+  proveedoresFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18, flexWrap: 'wrap' },
+  provLogo: { width: 74, height: 34, resizeMode: 'contain', opacity: 0.85 },
+  pie: { marginTop: 30, fontSize: 11, color: color.text4, textAlign: 'center' },
 })

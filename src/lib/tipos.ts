@@ -1,219 +1,166 @@
 /**
- * Tipos espejo del contrato en contexto-bareca / docs/API-ADMIN.md.
- * No se agregan campos que el backend no documente.
+ * Modelos espejo del contrato del BFF de Bareca (portal de vendedores).
+ * Reconstruidos de los services del portal Angular `policy-market`.
  */
 
-export type Rol = 'ADMIN' | 'OPERADOR'
+// ── Roles / jerarquía comercial ─────────────────────────────
+export type UserRole = 'BARECA' | 'OFICINA_REGIONAL' | 'DISTRIBUIDOR' | 'KIOSCO' | 'EMPLEADO'
 
-export type Semaforo = 'VERDE' | 'AMARILLO' | 'ROJO'
-
-export type Criterio = 'APROBADO' | 'REVISION' | 'RECHAZADO'
-
-/** Error normalizado del backend: `{ error, mensaje }`. */
-export interface ApiError {
-  error: string
-  mensaje: string
+/** Envoltorio de respuesta del BFF (varía entre `{data,statusCode,message}` y `{success,data}`). */
+export interface ApiResponse<T> {
+  data: T
+  statusCode?: number
+  message?: string
+  success?: boolean
 }
 
 // ── Autenticación ───────────────────────────────────────────
 
-export interface Admin {
-  id: string
-  usuario: string
-  nombre: string
-  email: string
-  rol: Rol
-  debeCambiarClave: boolean
-  ultimoAcceso: string | null
+export interface ValidateLoginPayload {
+  pass: string
+  dispositive: string
+  recaptchaToken?: string
+  deviceId?: string
+  productKey?: string
+  latitud?: string
+  longitud?: string
+  correo?: string
+  telefono?: string
+  usuario?: string
 }
 
-/** POST /auth/login */
-export interface LoginRes {
-  token: string
-  expiraEn: string
-  debeCambiarClave: boolean
-  admin: Admin
-}
-
-/** GET /auth/me — renueva la sesión */
-export interface MeRes {
-  admin: Admin
-  expiraEn: string
-}
-
-/** POST /auth/cambiar-clave */
-export interface OkRes {
-  ok: boolean
-}
-
-// ── Dashboard ───────────────────────────────────────────────
-
-export interface TendenciaPunto {
-  semana: string
-  cantidad: number
-}
-
-export interface AsegurabilidadDist {
-  aprobado: number
-  revision: number
-  rechazado: number
-}
-
-/** GET /dashboard */
-export interface DashboardRes {
-  totalMes: number
-  totalHistorico: number
-  variacionMes: number
-  indiceAsegurabilidad: number
-  tiempoPromedioMin: number
-  enVivo: number
-  tendencia: TendenciaPunto[]
-  asegurabilidad: AsegurabilidadDist
-}
-
-// ── Inspecciones ────────────────────────────────────────────
-
-/** GET /inspections — elemento de la lista paginada */
-export interface InspeccionItem {
-  id: string
-  codigo: string
-  vehiculo: string
-  placa: string
-  vin: string
-  estado: string
-  indice: number | null
-  semaforo: Semaforo | null
-  creadaEn: string
-  lat: number | null
-  lng: number | null
-  direccion: string | null
-  inspector: string | null
-  thumbUrl: string | null
-}
-
-/**
- * El contrato documenta la ruta paginada pero no el envoltorio exacto.
- * Se aceptan las dos formas usuales del backend (`items`/`total`/`page`)
- * y también un arreglo plano.
- */
-export interface PaginaInspecciones {
-  items: InspeccionItem[]
-  total: number
-  page: number
-}
-
-/** GET /inspections/mapa */
-export interface PuntoMapa {
-  id: string
-  codigo: string
-  lat: number
-  lng: number
-  placa: string
-  vehiculo: string
-  indice: number | null
-  semaforo: Semaforo | null
-  creadaEn: string
-  estado: string
-  /** Trabajo en marcha: aún no hay informe cerrado. */
-  enCurso: boolean
-  responsable: string | null
-  responsableEmail: string | null
-  /** Ruta de la foto de perfil del inspector (null si no tiene). */
-  responsableFoto: string | null
-  /** Solo si el punto es la posición del inspector: cuán fresca es. */
-  ubicacionEn: string | null
-}
-
-export interface Foto {
-  id: string
-  shot: string
-  titulo: string
-  url: string
-}
-
-export interface GrupoPuntaje {
-  grupo: string
-  peso: number
-  puntaje: number
-}
-
-export interface Hallazgo {
-  piezaId: string
-  pieza: string
-  grupo: string
-  nivel: number
-  tipo: string
-  descripcion: string
-}
-
-export interface Asegurabilidad {
-  porcentaje: number
-  criterio: Criterio
-}
-
-/** GET /inspections/{id} — expediente completo (resultado del análisis PLANO) */
-export interface Expediente {
-  id: string
-  codigo: string
-  vehiculo: string
-  placa: string
-  vin: string
-  estado: string
-  creadaEn: string
-  lat: number | null
-  lng: number | null
-  direccion: string | null
-  inspector: string | null
-  thumbUrl: string | null
-  fotos: Foto[]
-  videoUrl: string | null
-  videoDuracionSeg: number | null
-  asegurabilidad: Asegurabilidad | null
-  indice: number | null
-  semaforo: Semaforo | null
-  confianza: number | null
-  hallazgos: Hallazgo[] | null
-  grupos: GrupoPuntaje[] | null
-  leyendas: string[] | null
-  banderas: string[] | null
-  odometroKm: number | null
-  marca: string | null
-  modelo: string | null
-  anio: number | null
-  color: string | null
-  analizadaEn: string | null
-  inspectorEmail: string | null
-  testigos: unknown
-  shareToken: string | null
-}
-
-// ── Usuarios del portal ─────────────────────────────────────
-
-/** GET /users */
-export interface UsuarioPortal {
-  id: string
-  usuario: string
-  nombre: string
-  email: string
-  rol: Rol
-  activo: boolean
-  debeCambiarClave: boolean
-  ultimoAcceso: string | null
-  creadoEn: string
-}
-
-/** POST /users */
-export interface CrearUsuarioReq {
-  usuario: string
-  nombre: string
-  email: string
-  rol: Rol
-}
-
-/** PATCH /users/{id} */
-export interface EditarUsuarioReq {
-  nombre?: string
+export interface ValidateTokenClaims {
+  loginId: string
+  empleadoId: string
+  barecaId?: string
+  oficinaRegionalId?: string
+  distribuidorId?: string
+  KioscoId?: string
   email?: string
-  rol?: Rol
-  activo?: boolean
+}
+
+/** Usuario en sesión (equivalente a CurrentUser del portal). */
+export interface CurrentUser {
+  id: string
+  loginId: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  code?: string
+  role: UserRole
+  rolSecundario: string
+
+  barecaId?: string
+  oficinaRegionalId?: string
+  distribuidorId?: string
+  kioskoId?: string
+
+  barecaEntityId?: number
+  officeEntityId?: number
+  distributorEntityId?: number
+  kioskEntityId?: number
+  employeeEntityId?: number
+
+  comisionPrepagada?: boolean
+  associatedProductsIds: string[]
+}
+
+export interface PasswordInfo {
+  duracionPass?: number
+  fechaCreacion?: string
+  expirado?: boolean
+}
+
+// ── Pólizas (Mis Ventas) ────────────────────────────────────
+
+export type PolicyCategory = 'vehicle' | 'funeral' | 'auto'
+export type PolicyStatus = 'Vigente' | 'Inactiva' | 'Procesado' | 'Otro'
+
+export interface DisplayPolicy {
+  id: string
+  policyNumber: string
+  category: PolicyCategory
+  clientName: string
+  clientDocument: string
+  productName: string
+  orderNumber: string
+  saleDate: string
+  startDate: string
+  endDate: string
+  status: PolicyStatus
+  sellerName: string
+  sellerDocument: string
+  vehicleDetails?: {
+    plate: string
+    make: string
+    model: string
+    serialNIV: string
+    year: string
+    vehicleType: string
+    vehicleUse: string
+  }
+  rcvPlanDetails?: {
+    coverageType: string
+    insuranceClass: string
+    groupDescription: string
+    plateType: string
+    sumAssuredThings: number
+    sumAssuredPeople: number
+    primaAnualTCR: number
+  }
+  financials?: {
+    totalPremium: number
+    currency: string
+    paymentMethod: string
+    referenceNumber: string
+    rcvAmount: number
+    conversionRate: number
+    additionalTotal: number
+    planTotal: number
+  }
+}
+
+/** PDFs regenerados de una póliza (cuadro + carnet). */
+export interface PolicyPdfs {
+  poliza?: string | null
+  carnet?: string | null
+}
+
+// ── Notificaciones (campana) ────────────────────────────────
+export interface Notificacion {
+  id: number
+  titulo: string
+  mensaje: string
+  fecha?: string
+  tipoDestinoEspecifico?: string | null
+  perfilesDestino?: string | null
+  leida?: boolean
+}
+
+// ── Reporte de pólizas ──────────────────────────────────────
+export interface ReportKpis {
+  totalPolizas?: number
+  montoTotal?: number
+  primaTotal?: number
+  comisionTotal?: number
+  [k: string]: number | undefined
+}
+
+// ── Comisiones ──────────────────────────────────────────────
+export interface ComisionTotales {
+  totalGenerado?: number
+  totalPagado?: number
+  totalPendiente?: number
+  [k: string]: number | undefined
+}
+
+export interface ComisionTransaccion {
+  id: number | string
+  monto?: number
+  estado?: string
+  fecha?: string
+  numeroOrden?: string
+  producto?: string
+  [k: string]: unknown
 }

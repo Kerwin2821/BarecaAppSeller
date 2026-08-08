@@ -8,66 +8,41 @@ import { ToastProvider } from '@/components/Toast'
 import { Spinner } from '@/components/Estados'
 import { color } from '@/lib/tema'
 
-/**
- * Guardia de rutas (espejo de RutaPrivada del portal): exige sesión activa y
- * clave definitiva antes de entrar a las pestañas.
- */
+/** Rutas accesibles sin sesión. */
+const PUBLICAS = ['login', 'recuperar-contrasena', 'verificar']
+
 function Guardia({ children }: { children: React.ReactNode }) {
-  const { listo, sesion, admin } = useAuth()
+  const { listo, autenticado, cambioClave } = useAuth()
   const segments = useSegments()
   const router = useRouter()
 
   useEffect(() => {
     if (!listo) return
-    const enLogin = segments[0] === 'login'
-    const enCambio = segments[0] === 'cambiar-clave'
+    const seg0 = segments[0] ?? ''
+    const enPublica = PUBLICAS.includes(seg0)
+    const enCambio = seg0 === 'cambiar-clave'
 
-    if (!sesion) {
-      if (!enLogin) router.replace('/login')
-      return
-    }
-    if (admin?.debeCambiarClave) {
+    if (cambioClave) {
       if (!enCambio) router.replace('/cambiar-clave')
       return
     }
-    if (enLogin || enCambio) router.replace('/')
-  }, [listo, sesion, admin?.debeCambiarClave, segments, router])
+    if (!autenticado) {
+      if (!enPublica) router.replace('/login')
+      return
+    }
+    // Autenticado: si está en login/cambiar-clave, entrar al app.
+    if (seg0 === 'login' || enCambio) router.replace('/')
+  }, [listo, autenticado, cambioClave, segments, router])
 
   if (!listo) {
     return (
       <View style={est.splash}>
-        <Image
-          source={require('../assets/logo-bareca.png')}
-          style={{ width: 190, height: 56, resizeMode: 'contain', marginBottom: 26 }}
-        />
+        <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
         <Spinner size="large" />
       </View>
     )
   }
-
   return <>{children}</>
-}
-
-function Pila() {
-  const { tocar } = useAuth()
-
-  return (
-    // Cualquier toque en la app cuenta como actividad y renueva la sesión
-    // (equivale a los listeners de pointerdown/keydown del portal).
-    <View style={{ flex: 1 }} onStartShouldSetResponderCapture={() => (tocar(), false)}>
-      <Guardia>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bgApp } }}>
-          <Stack.Screen name="login" />
-          <Stack.Screen name="cambiar-clave" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="inspecciones/[id]"
-            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-          />
-        </Stack>
-      </Guardia>
-    </View>
-  )
 }
 
 export default function RootLayout() {
@@ -76,7 +51,15 @@ export default function RootLayout() {
       <AuthProvider>
         <ToastProvider>
           <StatusBar style="dark" />
-          <Pila />
+          <Guardia>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bgApp } }}>
+              <Stack.Screen name="login" />
+              <Stack.Screen name="recuperar-contrasena" />
+              <Stack.Screen name="cambiar-clave" />
+              <Stack.Screen name="(app)" />
+              <Stack.Screen name="verificar/[policyNumber]" />
+            </Stack>
+          </Guardia>
         </ToastProvider>
       </AuthProvider>
     </SafeAreaProvider>
@@ -84,10 +67,6 @@ export default function RootLayout() {
 }
 
 const est = StyleSheet.create({
-  splash: {
-    flex: 1,
-    backgroundColor: color.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  splash: { flex: 1, backgroundColor: color.white, alignItems: 'center', justifyContent: 'center', gap: 26 },
+  logo: { width: 200, height: 90, resizeMode: 'contain' },
 })

@@ -20,9 +20,9 @@ interface ToastCtx {
 const Ctx = createContext<ToastCtx | null>(null)
 
 const FONDO: Record<Tipo, string> = {
-  ok: color.successDark,
+  ok: color.success,
   error: color.danger,
-  info: color.navy,
+  info: color.primary,
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
