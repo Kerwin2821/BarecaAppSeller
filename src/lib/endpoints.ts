@@ -227,11 +227,68 @@ export const modificationApi = {
 }
 
 // ── Pagos / Emisión ─────────────────────────────────────────
+export interface Banco {
+  codigo: string
+  nombre: string
+}
+export interface RespuestaDebito {
+  code: string
+  id: string
+  message?: string
+  reference?: string
+  endtoend?: string
+  reference_c?: string
+  monto?: string
+}
+export interface RespuestaConsulta {
+  code: string
+  success: boolean
+  reference: string
+}
+export interface GatewayPago {
+  id: string
+  nombre: string
+  activo?: boolean
+  descripcion?: string
+  logo?: string
+}
+
+/**
+ * Pagos / emisión — endpoints reales del portal (orden-seguros + payments).
+ * Réplica de PolicyApiService: convertir monedas, lista de bancos, config de
+ * pasarela, crear orden (débito/pago móvil), débito inmediato con OTP, consulta
+ * de operación (polling), webhook de pago móvil y finalización de póliza.
+ */
 export const paymentApi = {
-  /** Config de la pasarela (bancos, pago móvil habilitado, etc.). */
-  config: () => bff<any>('/payments/config'),
+  /** Config de la pasarela (gateways activos + pago móvil habilitado). */
+  config: () => bff<ApiResponse<{ gateways: GatewayPago[]; pagoMovilHabilitado: boolean }>>('/payments/config', { sinCierre: true }),
+  /** Tasa de cambio: convierte `monto` de `from` a `to` (p. ej. 1 EUR → VES). */
+  convertirMoneda: (monto: number, from: string, to: string) =>
+    bff<ApiResponse<number>>(`/policies/orden-seguros/v1/convertir-monedas/${monto}/${from}/${to}`, { sinCierre: true }),
+  /** Lista de bancos emisores. */
+  bancos: () => bff<ApiResponse<Banco[]>>('/policies/pre-ordende-pagos/v1/lista-bancos', { sinCierre: true }),
+  /** Comisión prepagada → total neto (número crudo). */
+  comisionPrepagada: (body: unknown) => bff<number>('/policies/orden-seguros/v1/comision-prepagada', { method: 'POST', body }),
+  /** Comisión/descuento → { monto, porcentajeMaximo }. */
+  comisionDescuento: (body: unknown) =>
+    bff<{ monto: number; porcentajeMaximo: number }>('/policies/orden-seguros/v1/comision-descuento', { method: 'POST', body }),
+  /** ¿Hay póliza vigente para la placa? (evita cobros duplicados). */
+  vigentePorPlaca: (placa: string) =>
+    bff<any>(`/policies/polizas/v1/vigente/${encodeURIComponent(placa)}`, { sinCierre: true }),
+  /** Crea la orden (Débito Inmediato). Devuelve message "Número de orden generado: N". */
+  crearOrden: (body: unknown) => bff<ApiResponse<any>>('/policies/orden-seguros/v1/addorden-client', { method: 'POST', body }),
+  /** Crea la orden (Pago Móvil). */
+  crearOrdenPagoMovil: (body: unknown) => bff<ApiResponse<any>>('/policies/orden-seguros/v1/addorden-client-pagoMovil', { method: 'POST', body }),
+  /** Envía el débito inmediato con el OTP → operación (code/id/reference/...). */
+  debitoInmediato: (body: unknown) => bff<ApiResponse<RespuestaDebito>>('/policies/orden-seguros/debito-inmediato', { method: 'POST', body }),
+  /** Consulta el estado de la operación de débito (polling). */
+  consultarOperacion: (body: unknown) => bff<ApiResponse<RespuestaConsulta>>('/policies/orden-seguros/consultar-operacion', { method: 'POST', body }),
+  /** Estado del webhook de pago móvil (polling de respaldo). */
+  webhookStatus: (orderId: string) => bff<any>(`/webhook/status/${encodeURIComponent(orderId)}`, { sinCierre: true }),
+  /** Póliza por número (tras confirmar el pago móvil). */
+  polizaPorNumero: (params: Record<string, string | number | undefined>) => bff<any>('/policies/polizas', { params, sinCierre: true }),
   /** Emisión final de la póliza tras confirmar el pago (crea cuadro + carnet). */
-  finalizePolicy: (body: unknown) => bff<any>('/payments/finalize-policy', { method: 'POST', body }),
+  finalizePolicy: (body: unknown) => bff<ApiResponse<any>>('/payments/finalize-policy', { method: 'POST', body }),
 }
 
 // ── OCR (IA) de cédula y carnet de circulación ──────────────
@@ -274,6 +331,26 @@ export const teamApi = {
   unifiedCreate: (body: unknown) => bff<any>('/users/team/unified-create', { method: 'POST', body }),
 }
 
+// ── Staging de cliente + vehículo (antes de crear la orden) ─
+export const clientStageApi = {
+  /** Busca un cliente por documento (para no duplicar). */
+  buscarPorDocumento: (doc: string) =>
+    bff<any>('/clients/clientes', { params: { 'numeroDocumento.equals': doc, page: 0, size: 20 }, sinCierre: true }),
+  /** Crea el cliente (add-cliente). */
+  addCliente: (body: unknown) => bff<ApiResponse<any>>('/clients/clientes/v1/add-cliente', { method: 'POST', body }),
+  /** Agrega teléfono al cliente (best-effort). */
+  addTelefono: (body: unknown) => bff<ApiResponse<any>>('/clients/telefonos/v1/add-phone', { method: 'POST', body }),
+  /** Agrega correo al cliente (best-effort). */
+  addCorreo: (body: unknown) => bff<ApiResponse<any>>('/clients/correos/v1/add-email', { method: 'POST', body }),
+  /** Agrega dirección al cliente (best-effort). */
+  addDireccion: (body: unknown) => bff<ApiResponse<any>>('/clients/direcciones/v1/aad-addrees', { method: 'POST', body }),
+}
+
+export const vehiculoRegApi = {
+  /** Registra el vehículo → devuelve el id de registro para la orden. */
+  addRegistro: (body: unknown) => bff<ApiResponse<any>>('/policies/registros-vehiculos/v1/addRegisterVehicle', { method: 'POST', body }),
+}
+
 // ── Funerario (planes/opciones de cobertura + emisión) ──────
 export interface PlanFunerario {
   id: string
@@ -306,6 +383,11 @@ export const funerarioApi = {
   /** Crea la orden funeraria por Pago Móvil. Réplica de createFuneralPagoMovilOrder. */
   crearOrdenPagoMovil: (body: unknown) =>
     bff<ApiResponse<any>>('/clients/ordens/v1/addorden-client-pagoMovil', { method: 'POST', body }),
+  /** Finaliza la póliza funeraria (crea cuadro + carnet). */
+  finalizarPoliza: (body: unknown) =>
+    bff<ApiResponse<any>>('/clients/polizas-funerarios/v1/finalizar-poliza', { method: 'POST', body }),
+  /** Parentescos (para el payload de asegurados). */
+  parentescos: () => bff<any>('/clients/parentescos', { params: { page: 0, size: 50 }, sinCierre: true }),
 }
 
 // ── Público (verificación de póliza por QR) ─────────────────
