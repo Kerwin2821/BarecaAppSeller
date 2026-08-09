@@ -1,16 +1,28 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
-import { userApi } from '@/lib/endpoints'
+import { teamApi, userApi } from '@/lib/endpoints'
+import { mensajeDeError } from '@/lib/api'
+import { actorUuid, etiquetaRol } from '@/lib/roles'
 import { fechaCorta } from '@/lib/formato'
 import type { CurrentUser, UserRole } from '@/lib/tipos'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
-import { CargandoBloque, EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
-import { Alerta, Chip, Tarjeta } from '@/components/Ui'
+import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
+import { Modal } from '@/components/Modal'
+import { useToast } from '@/components/Toast'
+import { Alerta, Boton, Campo, Chip, Tarjeta } from '@/components/Ui'
 import { color, fuenteMono } from '@/lib/tema'
 
 type Tab = 'offices' | 'distributors' | 'kiosks' | 'employees'
+
+/** Rol que cada nivel puede crear (creatableRoles del AuthService). */
+function rolCreable(rol: UserRole | null | undefined): UserRole | null {
+  if (rol === 'BARECA') return 'OFICINA_REGIONAL'
+  if (rol === 'OFICINA_REGIONAL') return 'DISTRIBUIDOR'
+  if (rol === 'DISTRIBUIDOR') return 'KIOSCO'
+  return null
+}
 
 /** Pestañas visibles por rol (viewableTeamTabs del AuthService del portal). */
 function tabsPorRol(rol: UserRole | null | undefined): { id: Tab; label: string }[] {
@@ -42,6 +54,8 @@ export default function Equipo() {
   const { user } = useAuth()
   const tabs = useMemo(() => tabsPorRol(user?.role), [user?.role])
   const [tab, setTab] = useState<Tab>(tabs[0]?.id ?? 'kiosks')
+  const [crearAbierto, setCrearAbierto] = useState(false)
+  const nuevoRol = rolCreable(user?.role)
 
   const cargar = useCallback(async () => {
     const r = await userApi.teamHierarchy(paramsJerarquia(user))
@@ -72,6 +86,12 @@ export default function Equipo() {
         titulo="Gestión de Equipo"
         detalle="Tu red comercial multinivel (Corporativo → Oficina Regional → Distribuidor → Kiosco)"
       />
+
+      {nuevoRol ? (
+        <View style={{ marginBottom: 12 }}>
+          <Boton texto={`+ Crear ${etiquetaRol(nuevoRol)}`} onPress={() => setCrearAbierto(true)} />
+        </View>
+      ) : null}
 
       <View style={est.tabs}>
         {tabs.map((t) => (
@@ -107,13 +127,140 @@ export default function Equipo() {
         </View>
       )}
 
-      <View style={{ marginTop: 14 }}>
+      {nuevoRol ? (
+        <ModalCrearEntidad
+          abierto={crearAbierto}
+          rol={nuevoRol}
+          user={user}
+          onCerrar={() => setCrearAbierto(false)}
+          onListo={() => {
+            setCrearAbierto(false)
+            recargar()
+          }}
+        />
+      ) : null}
+    </Pantalla>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════
+   Modal: crear entidad del nivel siguiente (unified-create)
+   ══════════════════════════════════════════════════════════ */
+
+function ModalCrearEntidad({
+  abierto,
+  rol,
+  user,
+  onCerrar,
+  onListo,
+}: {
+  abierto: boolean
+  rol: UserRole
+  user: CurrentUser | null
+  onCerrar: () => void
+  onListo: () => void
+}) {
+  const { avisar } = useToast()
+  const [nombre, setNombre] = useState('')
+  const [numeroDocumento, setNumeroDocumento] = useState('')
+  const [correo, setCorreo] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (abierto) {
+      setNombre('')
+      setNumeroDocumento('')
+      setCorreo('')
+      setTelefono('')
+      setError(null)
+      setEnviando(false)
+    }
+  }, [abierto])
+
+  const enviar = async () => {
+    if (enviando) return
+    if (!nombre.trim() || !numeroDocumento.trim()) {
+      setError('Completa nombre y documento.')
+      return
+    }
+    if (!/.+@.+\..+/.test(correo)) {
+      setError('Ingresa un correo válido: allí se envían las credenciales de acceso.')
+      return
+    }
+    setEnviando(true)
+    setError(null)
+    try {
+      // Payload de alta unificada (UserFormOutput del portal). El padre y las
+      // comisiones por producto se resuelven en el backend según el creador.
+      const padreUuid = user ? (actorUuid(user) ?? '') : ''
+      await teamApi.unifiedCreate({
+        role: rol,
+        nombre: nombre.trim(),
+        numeroDocumento: numeroDocumento.trim(),
+        email: correo.trim(),
+        telefono: telefono.trim(),
+        comisionPrepagada: false,
+        commissions: [],
+        creadorPor: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || '',
+        creadorUuid: padreUuid,
+        parentId: padreUuid,
+      })
+      avisar(`${etiquetaRol(rol)} creado. Se enviaron credenciales a ${correo.trim()}.`, 'ok')
+      onListo()
+    } catch (e) {
+      setError(mensajeDeError(e))
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <Modal abierto={abierto} onCerrar={onCerrar} titulo={`Crear ${etiquetaRol(rol)}`} subtitulo="Se enviarán credenciales de acceso por correo">
+      <Campo etiqueta="Nombre" placeholder="Nombre de la entidad" value={nombre} onChangeText={setNombre} style={{ marginBottom: 14 }} />
+      <Campo
+        etiqueta="Documento (RIF / Cédula)"
+        placeholder="J-12345678-9"
+        autoCapitalize="characters"
+        value={numeroDocumento}
+        onChangeText={setNumeroDocumento}
+        style={{ marginBottom: 14 }}
+      />
+      <Campo
+        etiqueta="Correo"
+        placeholder="correo@ejemplo.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        value={correo}
+        onChangeText={setCorreo}
+        style={{ marginBottom: 14 }}
+      />
+      <Campo
+        etiqueta="Teléfono"
+        placeholder="04120000000"
+        keyboardType="phone-pad"
+        value={telefono}
+        onChangeText={setTelefono}
+      />
+
+      <View style={{ marginTop: 16 }}>
         <Alerta tipo="info">
-          Alta y edición de entidades (con comisiones por producto y credenciales de acceso) llegan en la
-          siguiente iteración. Esta vista ya lista tu jerarquía real desde el BFF.
+          Las comisiones por producto se heredan de tu configuración. El ajuste fino de comisiones por producto
+          llega en la próxima iteración.
         </Alerta>
       </View>
-    </Pantalla>
+
+      {error ? (
+        <View style={{ marginTop: 12 }}>
+          <Alerta tipo="error">{error}</Alerta>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+        <Boton texto="Cancelar" variante="soft" onPress={onCerrar} style={{ flex: 1 }} />
+        <Boton texto={enviando ? 'Creando…' : 'Crear y enviar clave'} onPress={enviar} cargando={enviando} style={{ flex: 1.5 }} />
+      </View>
+    </Modal>
   )
 }
 
