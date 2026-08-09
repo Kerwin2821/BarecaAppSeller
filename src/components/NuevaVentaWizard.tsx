@@ -122,65 +122,112 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [bancoPago, setBancoPago] = useState('0169')
   const [metodoPago, setMetodoPago] = useState<'PAGO_MOVIL' | 'DEBITO'>('PAGO_MOVIL')
   const [emitiendo, setEmitiendo] = useState(false)
+  // Fases del pago (como el stepper de la web): datos → OTP → éxito.
+  const [fasePago, setFasePago] = useState<'datos' | 'otp' | 'exito'>('datos')
+  const [otpCodigo, setOtpCodigo] = useState('')
+  const [emision, setEmision] = useState<{ id?: string; poliza?: string; carnet?: string; condicionado?: string; numero?: string } | null>(null)
+  const [descuentoOn, setDescuentoOn] = useState(false)
   const { avisar } = useToast()
 
-  const emitir = useCallback(() => {
-    const plan = planes[planIdx ?? 0]
+  /** Llama a la emisión final (crea póliza + cuadro + carnet) y pasa a "éxito". */
+  const finalizarEmision = useCallback(async () => {
+    const prod = productos.find((p) => p.productoId === productoId)
+    if (!cliente || !prod) return
+    setEmitiendo(true)
+    try {
+      const payload = {
+        paymentMethod: metodoPago,
+        paymentReference: referenciaPago,
+        otp: otpCodigo || undefined,
+        banco: bancoPago,
+        telefonoPago,
+        incluirApov: apovOn,
+        cantidadPuestos: Number(puestos) || undefined,
+        conductor: conductorTipo,
+        productoId: prod.productoId,
+        grupoId,
+        cliente: {
+          cedula: `${cliente.tipoDoc}-${cliente.cedula}`,
+          nombres: cliente.nombres,
+          apellidos: cliente.apellidos,
+          sexo: cliente.genero,
+          fechaNacimiento: cliente.fechaNacimiento,
+          estadoId: cliente.estadoId,
+          municipioId: cliente.municipioId,
+          ciudadId: cliente.ciudadId,
+        },
+        vehiculo: {
+          placa: cliente.placa,
+          serialNiv: cliente.serialNiv,
+          serialMotor: cliente.serialMotor,
+          color: cliente.color,
+          marca: cliente.marca,
+          modelo: cliente.modelo,
+        },
+        plan: planes[planIdx ?? 0],
+      }
+      const r = await paymentApi.finalizePolicy(payload)
+      const d = r?.data ?? r ?? {}
+      setEmision({
+        id: d.transactionId ?? d.idTransaccion ?? d.numeroOrden,
+        numero: d.policyNumber ?? d.numeroPoliza,
+        poliza: d.poliza ?? d.urlPoliza ?? d.comprobante,
+        carnet: d.carnet ?? d.urlCarnet,
+        condicionado: d.condicionado ?? d.urlCondicionado,
+      })
+      setFasePago('exito')
+      avisar('Póliza emitida.', 'ok')
+    } catch (e) {
+      avisar(mensajeDeError(e), 'error')
+    } finally {
+      setEmitiendo(false)
+    }
+  }, [cliente, productos, productoId, grupoId, planes, planIdx, referenciaPago, otpCodigo, bancoPago, telefonoPago, metodoPago, apovOn, puestos, conductorTipo, avisar])
+
+  /** Paso 1 del pago: valida y avanza. Débito pide OTP; pago móvil emite tras confirmar. */
+  const iniciarPago = useCallback(() => {
+    if (metodoPago === 'DEBITO') {
+      // El banco envía el SMS con la clave dinámica; pasamos al paso OTP.
+      setFasePago('otp')
+      return
+    }
     Alert.alert(
       'Emitir póliza',
-      'Se generará una orden de pago móvil REAL y se emitirá la póliza (cuadro + carnet). Esta acción mueve dinero y crea una póliza. ¿Continuar?',
+      'Se registra el pago móvil y se emite la póliza (cuadro + carnet). Confírmalo solo cuando el pago esté hecho. ¿Continuar?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Emitir',
-          style: 'destructive',
-          onPress: async () => {
-            const prod = productos.find((p) => p.productoId === productoId)
-            if (!cliente || !prod) return
-            setEmitiendo(true)
-            try {
-              const payload = {
-                paymentMethod: 'PAGO_MOVIL',
-                paymentReference: referenciaPago,
-                banco: bancoPago,
-                telefonoPago,
-                productoId: prod.productoId,
-                grupoId,
-                cliente: {
-                  cedula: `${cliente.tipoDoc}-${cliente.cedula}`,
-                  nombres: cliente.nombres,
-                  apellidos: cliente.apellidos,
-                  sexo: cliente.genero,
-                  fechaNacimiento: cliente.fechaNacimiento,
-                  estadoId: cliente.estadoId,
-                  municipioId: cliente.municipioId,
-                  ciudadId: cliente.ciudadId,
-                },
-                vehiculo: {
-                  placa: cliente.placa,
-                  serialNiv: cliente.serialNiv,
-                  serialMotor: cliente.serialMotor,
-                  color: cliente.color,
-                  marca: cliente.marca,
-                  modelo: cliente.modelo,
-                },
-                plan,
-              }
-              const r = await paymentApi.finalizePolicy(payload)
-              const numeroPoliza = r?.data?.policyNumber ?? r?.policyNumber ?? r?.data?.numeroPoliza
-              const urlPdf = r?.data?.poliza ?? r?.data?.urlPoliza ?? r?.poliza
-              avisar(numeroPoliza ? `Póliza ${numeroPoliza} emitida.` : 'Póliza emitida.', 'ok')
-              if (urlPdf) Linking.openURL(urlPdf).catch(() => undefined)
-            } catch (e) {
-              avisar(mensajeDeError(e), 'error')
-            } finally {
-              setEmitiendo(false)
-            }
-          },
-        },
+        { text: 'Emitir', onPress: () => void finalizarEmision() },
       ],
     )
-  }, [cliente, productos, productoId, grupoId, planes, planIdx, referenciaPago, bancoPago, telefonoPago, avisar])
+  }, [metodoPago, finalizarEmision])
+
+  /** Reinicia el asistente para una nueva venta (tras emitir con éxito). */
+  const reiniciar = useCallback(() => {
+    setPaso(0)
+    setTipo(null)
+    setProductoId(null)
+    setClaseId(null)
+    setGrupoId(null)
+    setGrupos([])
+    setRiesgos({})
+    setPlanes([])
+    setPlanIdx(null)
+    setPuestos('5')
+    setApovOn(false)
+    setApov(null)
+    setGruaOn(false)
+    setCliente(null)
+    setConductorTipo('tomador')
+    setReferenciaPago('')
+    setTelefonoPago('')
+    setBancoPago('0169')
+    setMetodoPago('PAGO_MOVIL')
+    setFasePago('datos')
+    setOtpCodigo('')
+    setEmision(null)
+    setDescuentoOn(false)
+    setError(null)
+  }, [])
 
   const [cargando, setCargando] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
@@ -521,100 +568,178 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
               <Boton texto="Siguiente Paso" onPress={() => setPaso(3)} style={{ flex: 1.4 }} />
             </View>
           </Tarjeta>
+        ) : fasePago === 'exito' ? (
+          // ── Pago · Éxito (ID de transacción + descargas) ───────
+          <PagoExito emision={emision} onNuevo={reiniciar} />
         ) : (
-          // ── Paso 4 · Registro del Pago (como la web) ───────────
+          // ── Paso 4 · Registro del Pago (réplica del stepper de la web) ──
           <View style={{ gap: 12 }}>
-            {/* Resumen de la venta */}
-            <Tarjeta style={{ padding: 16 }}>
-              <Text style={est.pasoTitulo}>Registro del Pago</Text>
-              <View style={est.resumenBox}>
-                <FilaResumen k="Aseguradora" v={producto?.nombre ?? '—'} />
-                <FilaResumen k="Plan" v={planes[planIdx ?? 0]?.grupo?.descripcion ?? planes[planIdx ?? 0]?.descripcion ?? 'Plan RCV'} />
-                <FilaResumen k="Tomador" v={`${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() || '—'} />
-                <FilaResumen k="Documento" v={`${cliente?.tipoDoc ?? ''}-${cliente?.cedula ?? ''}`} />
-              </View>
-            </Tarjeta>
-
-            {/* Total a pagar */}
-            <Tarjeta style={est.totalCard}>
-              <Text style={est.totalLabel}>Total a {metodoPago === 'PAGO_MOVIL' ? 'Pagar' : 'Debitar'}</Text>
-              <Text style={est.totalValor}>{totalVenta(planes[planIdx ?? 0])}</Text>
-            </Tarjeta>
-
-            {/* Método de pago */}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {([['PAGO_MOVIL', '📲 Pago Móvil'], ['DEBITO', '💳 Débito Inmediato']] as const).map(([m, t]) => (
-                <Pressable key={m} onPress={() => setMetodoPago(m)} style={[est.metodoBtn, metodoPago === m && est.metodoBtnOn]}>
-                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: metodoPago === m ? '#fff' : color.text2 }}>{t}</Text>
-                </Pressable>
-              ))}
+            {/* Sub-stepper del pago: Ingresa Datos → Recibe SMS → Confirma */}
+            <View style={est.pagoSteps}>
+              {['Ingresa Datos', 'Recibe SMS', 'Confirma'].map((s, i) => {
+                const idx = fasePago === 'otp' ? 1 : 0
+                const activo = i === idx
+                const hecho = i < idx
+                return (
+                  <View key={s} style={est.pagoStepItem}>
+                    <View style={[est.pagoDot, activo && est.pagoDotOn, hecho && est.pagoDotHecho]}>
+                      <Text style={[est.pagoDotTxt, (activo || hecho) && { color: '#fff' }]}>{hecho ? '✓' : i + 1}</Text>
+                    </View>
+                    <Text style={[est.pagoStepLabel, activo && { color: color.primaryDark, fontWeight: '800' }]} numberOfLines={1}>
+                      {s}
+                    </Text>
+                  </View>
+                )
+              })}
             </View>
 
-            <Tarjeta style={{ padding: 18, gap: 14 }}>
-              {metodoPago === 'PAGO_MOVIL' ? (
-                <>
-                  <Text style={est.metodoTitulo}>Datos para el Pago Móvil</Text>
-                  <Text style={est.hint}>Indícanos desde dónde realizarás el pago móvil para identificarlo.</Text>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
-                    </View>
-                    <Campo
-                      etiqueta="Teléfono emisor"
-                      placeholder="04141234567"
-                      keyboardType="phone-pad"
-                      value={telefonoPago}
-                      onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
-                      style={{ flex: 1 }}
-                    />
+            {fasePago === 'datos' ? (
+              <>
+                {/* Resumen de la venta */}
+                <Tarjeta style={{ padding: 16 }}>
+                  <Text style={est.pasoTitulo}>Registro del Pago</Text>
+                  <View style={est.resumenBox}>
+                    <FilaResumen k="Aseguradora" v={producto?.nombre ?? '—'} />
+                    <FilaResumen k="Plan" v={planes[planIdx ?? 0]?.grupo?.descripcion ?? planes[planIdx ?? 0]?.descripcion ?? 'Plan RCV'} />
+                    <FilaResumen k="Tomador" v={`${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() || '—'} />
+                    <FilaResumen k="Documento" v={`${cliente?.tipoDoc ?? ''}-${cliente?.cedula ?? ''}`} />
                   </View>
-                  <Campo
-                    etiqueta="Referencia de pago móvil"
-                    placeholder="Últimos 6+ dígitos"
-                    keyboardType="number-pad"
-                    value={referenciaPago}
-                    onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
-                  />
-                </>
-              ) : (
-                <>
-                  <Text style={est.metodoTitulo}>Datos del Titular de la Cuenta</Text>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
-                    </View>
-                    <Campo
-                      etiqueta="Teléfono afiliado"
-                      placeholder="04141234567"
-                      keyboardType="phone-pad"
-                      value={telefonoPago}
-                      onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-                  <Alerta tipo="info">
-                    En débito inmediato el banco envía un código (OTP) para autorizar el débito. Ese paso con OTP se
-                    confirma con el equipo de backend.
-                  </Alerta>
-                </>
-              )}
+                </Tarjeta>
 
-              <Alerta tipo="info">
-                Al emitir se genera una orden de pago móvil real y se crea la póliza (cuadro + carnet). Confírmalo solo
-                cuando el pago esté hecho.
-              </Alerta>
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(2)} style={{ flex: 1 }} />
-                <Boton
-                  texto={emitiendo ? 'Emitiendo…' : 'Emitir póliza'}
-                  variante="exito"
-                  onPress={emitir}
-                  cargando={emitiendo}
-                  disabled={referenciaPago.length < 6 || telefonoPago.length < 7}
-                  style={{ flex: 1.4 }}
+                {/* Desglose: Monto Base + APOV + Total (como la web) */}
+                <Tarjeta style={{ padding: 16, gap: 4 }}>
+                  <FilaResumen k="Monto Base" v={moneda(bsDePlan(planes[planIdx ?? 0]), 'Bs.')} />
+                  {apovOn && apov ? <FilaResumen k="+ APOV (RCV Ocupantes)" v={moneda(apov.primaFinalTotal ?? 0, 'Bs.')} /> : null}
+                  <Pressable onPress={() => setDescuentoOn((v) => !v)} style={est.descuentoFila}>
+                    <View style={[est.checkBox, descuentoOn && est.checkOn]}>
+                      {descuentoOn ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '900' }}>✓</Text> : null}
+                    </View>
+                    <Text style={{ fontSize: 12.5, color: color.text2, flex: 1 }}>
+                      Aplicar descuento por comisión prepagada (el monto final lo confirma el backend al emitir)
+                    </Text>
+                  </Pressable>
+                  <View style={est.totalDivider} />
+                  <View style={est.apovFila}>
+                    <Text style={est.totalEstK}>Total a {metodoPago === 'PAGO_MOVIL' ? 'Pagar' : 'Debitar'}</Text>
+                    <Text style={est.totalEstV}>
+                      {moneda(bsDePlan(planes[planIdx ?? 0]) + (apovOn && apov ? (apov.primaFinalTotal ?? 0) : 0), 'Bs.')}
+                    </Text>
+                  </View>
+                </Tarjeta>
+
+                {/* Método de pago */}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {([['PAGO_MOVIL', '📲 Pago Móvil'], ['DEBITO', '💳 Débito Inmediato']] as const).map(([m, t]) => (
+                    <Pressable key={m} onPress={() => setMetodoPago(m)} style={[est.metodoBtn, metodoPago === m && est.metodoBtnOn]}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: metodoPago === m ? '#fff' : color.text2 }}>{t}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Tarjeta style={{ padding: 18, gap: 14 }}>
+                  {metodoPago === 'PAGO_MOVIL' ? (
+                    <>
+                      <Text style={est.metodoTitulo}>Datos para el Pago Móvil</Text>
+                      <Text style={est.hint}>Indícanos desde dónde realizarás el pago móvil para identificarlo.</Text>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
+                        </View>
+                        <Campo
+                          etiqueta="Teléfono emisor"
+                          placeholder="04141234567"
+                          keyboardType="phone-pad"
+                          value={telefonoPago}
+                          onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
+                          style={{ flex: 1 }}
+                        />
+                      </View>
+                      <Campo
+                        etiqueta="Referencia de pago móvil"
+                        placeholder="Últimos 6+ dígitos"
+                        keyboardType="number-pad"
+                        value={referenciaPago}
+                        onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={est.metodoTitulo}>Datos del Titular de la Cuenta</Text>
+                      <Text style={est.hint}>El banco enviará un SMS con la clave dinámica (OTP) para autorizar el débito.</Text>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
+                        </View>
+                        <Campo
+                          etiqueta="Teléfono afiliado"
+                          placeholder="04141234567"
+                          keyboardType="phone-pad"
+                          value={telefonoPago}
+                          onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
+                          style={{ flex: 1 }}
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  <Alerta tipo="info">
+                    Al emitir se genera una orden de pago real y se crea la póliza (cuadro + carnet). Confírmalo solo
+                    cuando el pago esté hecho.
+                  </Alerta>
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                    <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(2)} style={{ flex: 1 }} />
+                    <Boton
+                      texto={
+                        emitiendo
+                          ? 'Emitiendo…'
+                          : metodoPago === 'DEBITO'
+                            ? 'Recibir clave SMS'
+                            : 'Emitir póliza'
+                      }
+                      variante="exito"
+                      onPress={iniciarPago}
+                      cargando={emitiendo}
+                      disabled={
+                        telefonoPago.length < 7 || (metodoPago === 'PAGO_MOVIL' && referenciaPago.length < 6)
+                      }
+                      style={{ flex: 1.4 }}
+                    />
+                  </View>
+                </Tarjeta>
+              </>
+            ) : (
+              // ── Fase OTP · Verifica tu Identidad (Débito) ──────
+              <Tarjeta style={{ padding: 20, gap: 14 }}>
+                <Text style={est.pasoTitulo}>Verifica tu Identidad</Text>
+                <Text style={est.hint}>
+                  Ingresa la clave dinámica (OTP) que el banco envió por SMS al teléfono afiliado para autorizar el
+                  débito de {totalVenta(planes[planIdx ?? 0])}.
+                </Text>
+                <Campo
+                  etiqueta="Clave dinámica (OTP)"
+                  placeholder="••••••"
+                  keyboardType="number-pad"
+                  value={otpCodigo}
+                  onChangeText={(t) => setOtpCodigo(t.replace(/[^0-9]/g, ''))}
+                  style={{ marginTop: 4 }}
                 />
-              </View>
-            </Tarjeta>
+                <Alerta tipo="error">
+                  Confirmar debita el monto de la cuenta del cliente y emite la póliza. La orquestación exacta del OTP
+                  se coordina con el equipo del BFF.
+                </Alerta>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                  <Boton texto="← Atrás" variante="soft" onPress={() => setFasePago('datos')} style={{ flex: 1 }} />
+                  <Boton
+                    texto={emitiendo ? 'Emitiendo…' : 'Confirmar y Emitir'}
+                    variante="exito"
+                    onPress={() => void finalizarEmision()}
+                    cargando={emitiendo}
+                    disabled={otpCodigo.length < 4}
+                    style={{ flex: 1.4 }}
+                  />
+                </View>
+              </Tarjeta>
+            )}
           </View>
         )}
       </ScrollView>
@@ -629,6 +754,72 @@ function FilaResumen({ k, v }: { k: string; v: string }) {
       <Text style={est.filaResumenV} numberOfLines={1}>
         {v}
       </Text>
+    </View>
+  )
+}
+
+/** Pantalla de éxito: ID de transacción + descarga de documentos (como la web). */
+function PagoExito({
+  emision,
+  onNuevo,
+}: {
+  emision: { id?: string; poliza?: string; carnet?: string; condicionado?: string; numero?: string } | null
+  onNuevo: () => void
+}) {
+  const docs = [
+    { etiqueta: 'Comprobante de Póliza', emoji: '📄', url: emision?.poliza },
+    { etiqueta: 'Carnet de RCV', emoji: '🪪', url: emision?.carnet },
+    { etiqueta: 'Condicionado', emoji: '📑', url: emision?.condicionado },
+  ].filter((d) => !!d.url)
+
+  return (
+    <View style={{ gap: 14 }}>
+      <Tarjeta style={est.exitoCard}>
+        <View style={est.exitoIcono}>
+          <Text style={{ fontSize: 34 }}>✅</Text>
+        </View>
+        <Text style={est.exitoTitulo}>¡Póliza Emitida!</Text>
+        <Text style={est.exitoSub}>La póliza se generó correctamente. Comparte los documentos con tu cliente.</Text>
+        {emision?.numero ? (
+          <View style={est.exitoNumeroBox}>
+            <Text style={est.exitoNumeroLabel}>Número de Póliza</Text>
+            <Text style={est.exitoNumero}>{emision.numero}</Text>
+          </View>
+        ) : null}
+        {emision?.id ? (
+          <View style={est.exitoTxFila}>
+            <Text style={est.exitoTxK}>ID de Transacción</Text>
+            <Text style={est.exitoTxV} numberOfLines={1}>
+              {emision.id}
+            </Text>
+          </View>
+        ) : null}
+      </Tarjeta>
+
+      {docs.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          <Text style={est.seccion}>Documentos de la póliza</Text>
+          {docs.map((d) => (
+            <Pressable key={d.etiqueta} onPress={() => d.url && Linking.openURL(d.url).catch(() => undefined)}>
+              <Tarjeta style={est.docCard}>
+                <Text style={{ fontSize: 22 }}>{d.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={est.docTitulo}>{d.etiqueta}</Text>
+                  <Text style={est.docSub}>Toca para abrir / descargar</Text>
+                </View>
+                <Text style={est.docFlecha}>⬇</Text>
+              </Tarjeta>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Alerta tipo="info">
+          La póliza fue emitida. Los documentos (cuadro y carnet) estarán disponibles en “Mis Ventas” en unos
+          instantes.
+        </Alerta>
+      )}
+
+      <Boton texto="Nueva venta" onPress={onNuevo} style={{ marginTop: 4 }} />
     </View>
   )
 }
@@ -768,4 +959,42 @@ const est = StyleSheet.create({
   filaResumen: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   filaResumenK: { fontSize: 12, color: color.text3 },
   filaResumenV: { fontSize: 12.5, fontWeight: '700', color: color.text, flexShrink: 1, textAlign: 'right' },
+  // Sub-stepper del pago
+  pagoSteps: {
+    flexDirection: 'row',
+    backgroundColor: color.white,
+    borderWidth: 1,
+    borderColor: color.borderSoft,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  pagoStepItem: { flex: 1, alignItems: 'center' },
+  pagoDot: {
+    width: 26, height: 26, borderRadius: 99, backgroundColor: color.bgCard,
+    borderWidth: 1, borderColor: color.border, alignItems: 'center', justifyContent: 'center',
+  },
+  pagoDotOn: { backgroundColor: color.primary, borderColor: color.primary },
+  pagoDotHecho: { backgroundColor: color.success, borderColor: color.success },
+  pagoDotTxt: { fontSize: 11.5, fontWeight: '800', color: color.text3 },
+  pagoStepLabel: { fontSize: 10, color: color.text3, marginTop: 4, textAlign: 'center' },
+  descuentoFila: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  // Éxito
+  exitoCard: { padding: 22, alignItems: 'center', gap: 6, backgroundColor: color.primaryTint, borderColor: color.primaryLight },
+  exitoIcono: {
+    width: 64, height: 64, borderRadius: 99, backgroundColor: color.white,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+  },
+  exitoTitulo: { fontSize: 20, fontWeight: '800', color: color.primaryDark },
+  exitoSub: { fontSize: 12.5, color: color.text2, textAlign: 'center', lineHeight: 18 },
+  exitoNumeroBox: { alignItems: 'center', marginTop: 10 },
+  exitoNumeroLabel: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, color: color.text3 },
+  exitoNumero: { fontSize: 22, fontWeight: '800', color: color.text, letterSpacing: 1 },
+  exitoTxFila: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8, maxWidth: '100%' },
+  exitoTxK: { fontSize: 11.5, color: color.text3 },
+  exitoTxV: { fontSize: 11.5, fontWeight: '700', color: color.text, flexShrink: 1 },
+  docCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15 },
+  docTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text },
+  docSub: { fontSize: 11, color: color.text3, marginTop: 1 },
+  docFlecha: { fontSize: 18, color: color.primary, fontWeight: '800' },
 })
