@@ -8,6 +8,7 @@ import {
   autenticarBiometria,
   biometriaDisponible,
   biometriaHabilitada,
+  borrarCredencialLogin,
   setBiometriaHabilitada,
   tipoBiometria,
 } from '@/lib/biometria'
@@ -53,8 +54,9 @@ export default function Perfil() {
       avisar(`Desbloqueo con ${bioTipo.toLowerCase()} activado`, 'ok')
     } else {
       await setBiometriaHabilitada(false)
+      await borrarCredencialLogin()
       setBioHabilitada(false)
-      avisar('Desbloqueo biométrico desactivado', 'info')
+      avisar('Ingreso con huella desactivado', 'info')
     }
   }
 

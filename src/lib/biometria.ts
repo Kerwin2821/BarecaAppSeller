@@ -56,3 +56,38 @@ export async function setBiometriaHabilitada(v: boolean): Promise<void> {
   if (v) await SecureStore.setItemAsync(K_HABILITADA, '1')
   else await SecureStore.deleteItemAsync(K_HABILITADA)
 }
+
+/* ── Credenciales para ingresar con huella ───────────────────
+ * Se guardan cifradas (SecureStore) para poder re-iniciar sesión tras validar
+ * la huella. Es el patrón estándar de "login biométrico" (como un gestor de
+ * contraseñas): el sistema las protege y solo se usan tras autenticar.
+ */
+const K_CRED = 'bareca.credLogin'
+
+export interface CredencialLogin {
+  identificador: string
+  password: string
+}
+
+export async function guardarCredencialLogin(c: CredencialLogin): Promise<void> {
+  await SecureStore.setItemAsync(K_CRED, JSON.stringify(c))
+}
+
+export async function leerCredencialLogin(): Promise<CredencialLogin | null> {
+  const raw = await SecureStore.getItemAsync(K_CRED)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as CredencialLogin
+  } catch {
+    return null
+  }
+}
+
+export async function borrarCredencialLogin(): Promise<void> {
+  await SecureStore.deleteItemAsync(K_CRED)
+}
+
+/** ¿Hay login biométrico configurado (habilitado + credenciales guardadas)? */
+export async function loginBiometricoListo(): Promise<boolean> {
+  return (await biometriaHabilitada()) && (await leerCredencialLogin()) !== null
+}
