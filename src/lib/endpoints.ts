@@ -170,6 +170,9 @@ export const rcvApi = {
       `/policies/tarifa-coberturas/tarifa-by-grupo/${encodeURIComponent(grupoId)}/${encodeURIComponent(productoId)}/${encodeURIComponent(proveedorId)}/TRUE`,
       { sinCierre: true },
     ),
+  /** Cálculo de APOV (RCV Ocupantes) por cantidad de puestos. */
+  apov: (cantidadPuestos: number) =>
+    bff<any>('/policies/cobertura-items/calcularApov', { params: { cantidadPuestos }, sinCierre: true }),
 }
 
 // ── Casco: planes con prima (público, para Nueva Venta) ─────

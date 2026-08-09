@@ -42,6 +42,17 @@ const RIESGOS = [
 const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionDrop[] =>
   xs.map((x) => ({ valor: id(x), texto: txt(x) }))
 
+/** Monto del plan en Bs (numérico), 0 si no se puede resolver. */
+function bsDePlan(plan: any): number {
+  if (!plan) return 0
+  const bs = plan.montoTotalVES ?? plan.totalVes ?? plan.primaTotalBs ?? plan.montoTotal ?? plan.finalTotalVES
+  if (typeof bs === 'number' && bs > 0) return bs
+  const tcr = plan.primaAnualTCR ?? plan.finalPrice ?? plan.prima
+  const tasa = plan.tasaBcv ?? plan.tasaCambio ?? plan.tasa
+  if (typeof tcr === 'number' && typeof tasa === 'number' && tasa > 0) return tcr * tasa
+  return 0
+}
+
 /** Total a pagar del plan (Bs si el backend lo trae, si no TCR en EUR). */
 function totalVenta(plan: any): string {
   if (!plan) return '—'
@@ -78,8 +89,34 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [planes, setPlanes] = useState<any[]>([])
   const [planIdx, setPlanIdx] = useState<number | null>(null)
 
+  // Adicionales de la cotización (como la web): puestos + APOV + Grúa.
+  const [puestos, setPuestos] = useState('5')
+  const [apovOn, setApovOn] = useState(false)
+  const [apov, setApov] = useState<any>(null)
+  const [apovCargando, setApovCargando] = useState(false)
+  const [gruaOn, setGruaOn] = useState(false)
+
+  useEffect(() => {
+    if (!apovOn) {
+      setApov(null)
+      return
+    }
+    const n = Number(puestos)
+    if (!n || n < 1) return
+    let vivo = true
+    setApovCargando(true)
+    rcvApi
+      .apov(n)
+      .then((r) => vivo && setApov(r?.data ?? r))
+      .catch(() => vivo && setApov(null))
+      .finally(() => vivo && setApovCargando(false))
+    return () => {
+      vivo = false
+    }
+  }, [apovOn, puestos])
+
   const [cliente, setCliente] = useState<DatosCliente | null>(null)
-  const [conductorMismo, setConductorMismo] = useState(true)
+  const [conductorTipo, setConductorTipo] = useState<'tomador' | 'otro'>('tomador')
   const [referenciaPago, setReferenciaPago] = useState('')
   const [telefonoPago, setTelefonoPago] = useState('')
   const [bancoPago, setBancoPago] = useState('0169')
@@ -356,6 +393,70 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                             <PlanCard key={i} plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} />
                           ))}
                         </View>
+
+                        {/* Configura los adicionales (APOV / Grúa) */}
+                        {planIdx !== null ? (
+                          <>
+                            <Text style={est.seccion}>Configura los adicionales</Text>
+                            <Campo
+                              etiqueta="Cantidad de puestos del vehículo"
+                              placeholder="Ej. 5"
+                              keyboardType="number-pad"
+                              value={puestos}
+                              onChangeText={(t) => setPuestos(t.replace(/[^0-9]/g, ''))}
+                            />
+                            <Tarjeta style={{ padding: 16, marginTop: 10 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={est.adTitulo}>🛡️ Servicio Adicional: APOV</Text>
+                                  <Text style={est.hint}>Responsabilidad Civil para Ocupantes (RCV Ocupantes).</Text>
+                                </View>
+                                <Switch value={apovOn} onValueChange={setApovOn} trackColor={{ true: color.primary, false: '#CBD5E1' }} thumbColor="#fff" />
+                              </View>
+                              {apovOn ? (
+                                apovCargando ? (
+                                  <Text style={[est.hint, { marginTop: 10 }]}>Calculando APOV…</Text>
+                                ) : apov ? (
+                                  <View style={est.apovBox}>
+                                    {[
+                                      ['Muerte Accidental', apov.muerteTotal],
+                                      ['Invalidez Permanente', apov.invalidezTotal],
+                                      ['Gastos Médicos', apov.gastosMedicosTotal],
+                                      ['Gastos de Entierro', apov.servicioFunerariosTotal],
+                                    ]
+                                      .filter(([, v]) => typeof v === 'number' && v > 0)
+                                      .map(([k, v]) => (
+                                        <View key={String(k)} style={est.apovFila}>
+                                          <Text style={est.apovK}>{k}</Text>
+                                          <Text style={est.apovV}>{moneda(v as number, 'Bs.')}</Text>
+                                        </View>
+                                      ))}
+                                    <View style={[est.apovFila, est.apovTotalFila]}>
+                                      <Text style={est.apovTotalK}>Prima APOV Total</Text>
+                                      <Text style={est.apovTotalV}>{moneda(apov.primaFinalTotal ?? 0, 'Bs.')}</Text>
+                                    </View>
+                                  </View>
+                                ) : (
+                                  <Text style={[est.hint, { marginTop: 10 }]}>No se pudo calcular el APOV.</Text>
+                                )
+                              ) : null}
+                            </Tarjeta>
+
+                            {/* Total estimado */}
+                            <Tarjeta style={est.totalEstimado}>
+                              <FilaResumen k={`Plan (${planes[planIdx]?.grupo?.descripcion ?? 'RCV'})`} v={moneda(bsDePlan(planes[planIdx]), 'Bs.')} />
+                              {apovOn && apov ? <FilaResumen k="+ APOV" v={moneda(apov.primaFinalTotal ?? 0, 'Bs.')} /> : null}
+                              <View style={est.totalDivider} />
+                              <View style={est.apovFila}>
+                                <Text style={est.totalEstK}>Total estimado</Text>
+                                <Text style={est.totalEstV}>
+                                  {moneda(bsDePlan(planes[planIdx]) + (apovOn && apov ? (apov.primaFinalTotal ?? 0) : 0), 'Bs.')}
+                                </Text>
+                              </View>
+                            </Tarjeta>
+                          </>
+                        ) : null}
+
                         <Boton
                           texto="Continuar — Datos del Cliente"
                           onPress={() => setPaso(1)}
@@ -390,24 +491,34 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
             }}
           />
         ) : paso === 2 ? (
-          // ── Paso 3 · Conductor ─────────────────────────────────
+          // ── Paso 3 · Conductor Frecuente ───────────────────────
           <Tarjeta style={{ padding: 18, gap: 12 }}>
-            <Text style={est.pasoTitulo}>Conductor</Text>
-            <Text style={est.hint}>Indica quién conduce habitualmente el vehículo.</Text>
-            <Pressable onPress={() => setConductorMismo((v) => !v)} style={est.check}>
-              <View style={[est.checkBox, conductorMismo && est.checkOn]}>
-                {conductorMismo ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>✓</Text> : null}
-              </View>
-              <Text style={{ fontSize: 13.5, color: color.text, flex: 1 }}>
-                El conductor es el mismo tomador ({cliente?.nombres} {cliente?.apellidos})
-              </Text>
-            </Pressable>
-            {!conductorMismo ? (
+            <Text style={est.pasoTitulo}>Conductor Frecuente</Text>
+            <Text style={est.hint}>Define quién será el conductor principal del vehículo.</Text>
+            {(
+              [
+                ['tomador', `${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() + ' (Tomador)'],
+                ['otro', 'Otra Persona'],
+              ] as const
+            ).map(([v, label]) => {
+              const sel = conductorTipo === v
+              return (
+                <Pressable key={v} onPress={() => setConductorTipo(v)} style={[est.radioFila, sel && est.radioFilaOn]}>
+                  <View style={[est.radio, sel && { borderColor: color.primary }]}>
+                    {sel ? <View style={est.radioDot} /> : null}
+                  </View>
+                  <Text style={{ fontSize: 13.5, fontWeight: sel ? '800' : '600', color: sel ? color.primaryDark : color.text, flex: 1 }}>
+                    {label}
+                  </Text>
+                </Pressable>
+              )
+            })}
+            {conductorTipo === 'otro' ? (
               <Alerta tipo="info">Los datos de un conductor distinto se capturan en la próxima iteración.</Alerta>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
               <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(1)} style={{ flex: 1 }} />
-              <Boton texto="Continuar — Pago" onPress={() => setPaso(3)} style={{ flex: 1.4 }} />
+              <Boton texto="Siguiente Paso" onPress={() => setPaso(3)} style={{ flex: 1.4 }} />
             </View>
           </Tarjeta>
         ) : (
@@ -607,6 +718,18 @@ const est = StyleSheet.create({
     backgroundColor: color.white,
   },
   metodoBtnOn: { backgroundColor: color.primary, borderColor: color.primary },
+  adTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text },
+  apovBox: { marginTop: 12, borderWidth: 1, borderColor: color.borderSoft, borderRadius: 10, overflow: 'hidden' },
+  apovFila: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, paddingHorizontal: 12 },
+  apovK: { fontSize: 12, color: color.text2 },
+  apovV: { fontSize: 12, color: color.text, fontWeight: '600' },
+  apovTotalFila: { backgroundColor: color.bgCard, borderTopWidth: 1, borderTopColor: color.borderSoft },
+  apovTotalK: { fontSize: 12.5, fontWeight: '800', color: color.text },
+  apovTotalV: { fontSize: 12.5, fontWeight: '800', color: color.primaryDark },
+  totalEstimado: { padding: 14, marginTop: 10, gap: 6 },
+  totalDivider: { height: 1, backgroundColor: color.borderSoft, marginVertical: 4 },
+  totalEstK: { fontSize: 14, fontWeight: '800', color: color.text },
+  totalEstV: { fontSize: 15, fontWeight: '800', color: color.primaryDark },
   nextBadge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
   nextTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
   check: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
@@ -620,6 +743,27 @@ const est = StyleSheet.create({
     justifyContent: 'center',
   },
   checkOn: { backgroundColor: color.primary, borderColor: color.primary },
+  radioFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: color.borderSoft,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+  radioFilaOn: { borderColor: color.primary, backgroundColor: color.primaryLight },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 99,
+    borderWidth: 2,
+    borderColor: color.borderInput,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioDot: { width: 10, height: 10, borderRadius: 99, backgroundColor: color.primary },
   resumenBox: { backgroundColor: color.bgCard, borderRadius: 12, padding: 12, gap: 6 },
   filaResumen: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   filaResumenK: { fontSize: 12, color: color.text3 },
