@@ -1,0 +1,96 @@
+import * as ImagePicker from 'expo-image-picker'
+import { aiApi } from './endpoints'
+
+/**
+ * Captura de documentos con OCR (réplica del client-data-step del portal):
+ * - Cédula → `/api/ai/extract-cedula` (multipart) → datos del tomador.
+ * - Carnet de circulación → `/api/ai/ocr-process` (base64) → datos del vehículo.
+ */
+
+export interface DatosCedulaOCR {
+  nombres?: string
+  apellidos?: string
+  numeroDocumento?: string
+  fechaNacimiento?: string
+  genero?: string
+}
+
+export interface DatosCarnetOCR {
+  placa?: string
+  serialNiv?: string
+  serialCarroceria?: string
+  serialMotor?: string
+  color?: string
+  marca?: string
+  modelo?: string
+  anio?: string
+}
+
+export type FuenteImagen = 'camara' | 'galeria'
+
+interface ImagenElegida {
+  uri: string
+  base64?: string
+  mimeType: string
+}
+
+async function elegir(fuente: FuenteImagen, conBase64: boolean): Promise<ImagenElegida | null> {
+  if (fuente === 'camara') {
+    const perm = await ImagePicker.requestCameraPermissionsAsync()
+    if (!perm.granted) throw new Error('Permiso de cámara denegado.')
+  } else {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) throw new Error('Permiso de galería denegado.')
+  }
+  const opts: ImagePicker.ImagePickerOptions = {
+    mediaTypes: ['images'],
+    quality: 0.7,
+    base64: conBase64,
+    allowsEditing: false,
+  }
+  const r =
+    fuente === 'camara'
+      ? await ImagePicker.launchCameraAsync(opts)
+      : await ImagePicker.launchImageLibraryAsync(opts)
+  if (r.canceled || !r.assets?.[0]) return null
+  const a = r.assets[0]
+  return { uri: a.uri, base64: a.base64 ?? undefined, mimeType: a.mimeType ?? 'image/jpeg' }
+}
+
+/** Captura la cédula y extrae los datos del tomador. */
+export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | null> {
+  const img = await elegir(fuente, false)
+  if (!img) return null
+  const form = new FormData()
+  // React Native acepta { uri, name, type } como parte de archivo en FormData.
+  form.append('file', { uri: img.uri, name: 'cedula.jpg', type: img.mimeType } as any)
+  form.append('purpose', 'kyc_cedula')
+  const r = await aiApi.extractCedula(form)
+  const d = r?.data ?? {}
+  return {
+    nombres: d.nombres ?? d.nombre,
+    apellidos: d.apellidos,
+    numeroDocumento: d.numeroDocumento ?? d.cedula ?? d.documento,
+    fechaNacimiento: d.fechaNacimiento ?? d.fecha_nacimiento,
+    genero: d.genero ?? d.sexo,
+  }
+}
+
+/** Captura el carnet de circulación y extrae los datos del vehículo. */
+export async function ocrCarnet(fuente: FuenteImagen): Promise<DatosCarnetOCR | null> {
+  const img = await elegir(fuente, true)
+  if (!img) return null
+  if (!img.base64) throw new Error('No se pudo leer la imagen.')
+  const r = await aiApi.ocrProcess(img.base64, img.mimeType, 'certificado')
+  const d = r?.data ?? {}
+  return {
+    placa: d.placa,
+    serialNiv: d.serialNiv ?? d.serial_niv ?? d.niv,
+    serialCarroceria: d.serialCarroceria ?? d.serialNiv,
+    serialMotor: d.serialMotor ?? d.serial_motor,
+    color: d.color,
+    marca: d.marca,
+    modelo: d.modelo,
+    anio: d.anio ? String(d.anio) : undefined,
+  }
+}

@@ -3,8 +3,11 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { geoApi, type GeoOpcion } from '../lib/endpoints'
 import { mensajeDeError } from '../lib/api'
+import { ocrCarnet, ocrCedula, type FuenteImagen } from '../lib/ocr'
 import { fechaCorta, isoDia } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
+import { Spinner } from './Estados'
+import { useToast } from './Toast'
 import { Alerta, Boton, Campo, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
 
@@ -18,6 +21,13 @@ export interface DatosCliente {
   estadoId: number | null
   municipioId: number | null
   ciudadId: number | null
+  // Vehículo (autocompletado por el carnet de circulación / editable)
+  placa: string
+  serialNiv: string
+  serialMotor: string
+  color: string
+  marca: string
+  modelo: string
 }
 
 const TIPOS_DOC: OpcionDrop[] = [
@@ -46,6 +56,7 @@ export function PasoCliente({
   onAtras: () => void
   onContinuar: (datos: DatosCliente) => void
 }) {
+  const { avisar } = useToast()
   const [d, setD] = useState<DatosCliente>({
     tipoDoc: 'V',
     cedula: '',
@@ -56,8 +67,60 @@ export function PasoCliente({
     estadoId: null,
     municipioId: null,
     ciudadId: null,
+    placa: '',
+    serialNiv: '',
+    serialMotor: '',
+    color: '',
+    marca: '',
+    modelo: '',
   })
   const set = <K extends keyof DatosCliente>(k: K, v: DatosCliente[K]) => setD((x) => ({ ...x, [k]: v }))
+  const [ocrCargando, setOcrCargando] = useState<'' | 'cedula' | 'carnet'>('')
+
+  const capturarCedula = useCallback(async (fuente: FuenteImagen) => {
+    setOcrCargando('cedula')
+    try {
+      const r = await ocrCedula(fuente)
+      if (r) {
+        setD((x) => ({
+          ...x,
+          nombres: r.nombres ?? x.nombres,
+          apellidos: r.apellidos ?? x.apellidos,
+          cedula: (r.numeroDocumento ?? x.cedula).replace(/[^0-9]/g, ''),
+          genero: (r.genero ?? '').toUpperCase().startsWith('F') ? 'F' : r.genero ? 'M' : x.genero,
+          fechaNacimiento: r.fechaNacimiento ?? x.fechaNacimiento,
+        }))
+        avisar('Cédula leída. Verifica los datos.', 'ok')
+      }
+    } catch (e) {
+      avisar(mensajeDeError(e), 'error')
+    } finally {
+      setOcrCargando('')
+    }
+  }, [avisar])
+
+  const capturarCarnet = useCallback(async (fuente: FuenteImagen) => {
+    setOcrCargando('carnet')
+    try {
+      const r = await ocrCarnet(fuente)
+      if (r) {
+        setD((x) => ({
+          ...x,
+          placa: (r.placa ?? x.placa).toUpperCase(),
+          serialNiv: r.serialNiv ?? r.serialCarroceria ?? x.serialNiv,
+          serialMotor: r.serialMotor ?? x.serialMotor,
+          color: r.color ?? x.color,
+          marca: r.marca ?? x.marca,
+          modelo: r.modelo ?? x.modelo,
+        }))
+        avisar('Carnet leído. Verifica placa y seriales.', 'ok')
+      }
+    } catch (e) {
+      avisar(mensajeDeError(e), 'error')
+    } finally {
+      setOcrCargando('')
+    }
+  }, [avisar])
 
   const [estados, setEstados] = useState<GeoOpcion[]>([])
   const [municipios, setMunicipios] = useState<GeoOpcion[]>([])
@@ -100,6 +163,24 @@ export function PasoCliente({
 
   return (
     <View style={{ gap: 12 }}>
+      {/* ── Captura con OCR ──────────────────────────────────── */}
+      <Tarjeta style={{ padding: 18, gap: 12 }}>
+        <Text style={est.titulo}>Captura con OCR</Text>
+        <Text style={est.hint}>Toma o sube una foto y autocompletamos los datos.</Text>
+        <ZonaOCR
+          etiqueta="Documento de identidad"
+          detalle="Cédula / RIF del tomador"
+          cargando={ocrCargando === 'cedula'}
+          onCapturar={capturarCedula}
+        />
+        <ZonaOCR
+          etiqueta="Carnet de circulación"
+          detalle="Extrae placa, seriales y color"
+          cargando={ocrCargando === 'carnet'}
+          onCapturar={capturarCarnet}
+        />
+      </Tarjeta>
+
       <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Datos del Tomador</Text>
         {error ? <Alerta tipo="error">{error}</Alerta> : null}
@@ -149,16 +230,26 @@ export function PasoCliente({
       </Tarjeta>
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
+        <Text style={est.titulo}>Datos del Vehículo</Text>
+        <Text style={est.hint}>Autocompletados del carnet; puedes corregirlos.</Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Campo etiqueta="Placa" placeholder="AB123CD" autoCapitalize="characters" value={d.placa} onChangeText={(t) => set('placa', t.toUpperCase())} style={{ flex: 1 }} />
+          <Campo etiqueta="Color" placeholder="Color" value={d.color} onChangeText={(t) => set('color', t)} style={{ flex: 1 }} />
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Campo etiqueta="Marca" placeholder="Marca" value={d.marca} onChangeText={(t) => set('marca', t)} style={{ flex: 1 }} />
+          <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
+        </View>
+        <Campo etiqueta="Serial de carrocería / NIV" placeholder="Serial NIV" autoCapitalize="characters" value={d.serialNiv} onChangeText={(t) => set('serialNiv', t.toUpperCase())} />
+        <Campo etiqueta="Serial del motor" placeholder="Serial motor" autoCapitalize="characters" value={d.serialMotor} onChangeText={(t) => set('serialMotor', t.toUpperCase())} />
+      </Tarjeta>
+
+      <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Dirección del Asegurado</Text>
         <Dropdown etiqueta="Estado" placeholder="Selecciona un estado" opciones={aOpc(estados)} valor={d.estadoId ? String(d.estadoId) : null} onCambiar={elegirEstado} cargando={cargando.estados} />
         <Dropdown etiqueta="Municipio" placeholder="Selecciona un municipio" opciones={aOpc(municipios)} valor={d.municipioId ? String(d.municipioId) : null} onCambiar={(v) => set('municipioId', Number(v))} cargando={cargando.mun} deshabilitado={!d.estadoId} />
         <Dropdown etiqueta="Ciudad" placeholder="Selecciona una ciudad" opciones={aOpc(ciudades)} valor={d.ciudadId ? String(d.ciudadId) : null} onCambiar={(v) => set('ciudadId', Number(v))} cargando={cargando.ciu} deshabilitado={!d.estadoId} />
       </Tarjeta>
-
-      <Alerta tipo="info">
-        La captura de cédula y carnet de circulación con OCR (autocompleta placa, seriales y color) llega en la
-        próxima iteración.
-      </Alerta>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
         <Boton texto="← Atrás" variante="soft" onPress={onAtras} style={{ flex: 1 }} />
@@ -168,8 +259,46 @@ export function PasoCliente({
   )
 }
 
+/** Zona de captura de un documento: cámara o galería, con estado de carga. */
+function ZonaOCR({
+  etiqueta,
+  detalle,
+  cargando,
+  onCapturar,
+}: {
+  etiqueta: string
+  detalle: string
+  cargando: boolean
+  onCapturar: (fuente: FuenteImagen) => void
+}) {
+  return (
+    <View style={est.zona}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={est.zonaEtiqueta}>{etiqueta}</Text>
+        <Text style={est.zonaDetalle}>{detalle}</Text>
+      </View>
+      {cargando ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Spinner size={16} />
+          <Text style={est.zonaLeyendo}>Leyendo…</Text>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable onPress={() => onCapturar('camara')} style={est.zonaBtn}>
+            <Text style={est.zonaBtnTexto}>📷 Cámara</Text>
+          </Pressable>
+          <Pressable onPress={() => onCapturar('galeria')} style={est.zonaBtn}>
+            <Text style={est.zonaBtnTexto}>🖼️ Galería</Text>
+          </Pressable>
+        </View>
+      )}
+    </View>
+  )
+}
+
 const est = StyleSheet.create({
   titulo: { fontSize: 15, fontWeight: '800', color: color.text },
+  hint: { fontSize: 12, color: color.text3, lineHeight: 16 },
   label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
   fecha: {
     borderWidth: 1,
@@ -179,4 +308,25 @@ const est = StyleSheet.create({
     paddingHorizontal: 13,
     backgroundColor: color.white,
   },
+  zona: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: color.borderInput,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+  },
+  zonaEtiqueta: { fontSize: 13, fontWeight: '700', color: color.text },
+  zonaDetalle: { fontSize: 11, color: color.text3, marginTop: 1 },
+  zonaLeyendo: { fontSize: 12, color: color.text2 },
+  zonaBtn: {
+    backgroundColor: color.primaryLight,
+    borderRadius: 9,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  zonaBtnTexto: { fontSize: 11.5, fontWeight: '700', color: color.primaryDark },
 })

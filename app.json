@@ -28,7 +28,17 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BARECA Vendedores usa tus fotos para leer la cédula y el carnet de circulación.",
+          "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": false
     }

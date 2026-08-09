@@ -223,6 +223,16 @@ export const modificationApi = {
     bff<any>(`/modification-requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status } }),
 }
 
+// ── OCR (IA) de cédula y carnet de circulación ──────────────
+export const aiApi = {
+  /** Cédula: multipart `file`. Devuelve `{success, data:{nombres, apellidos, numeroDocumento, fechaNacimiento, genero...}}`. */
+  extractCedula: (form: FormData) =>
+    bff<{ success: boolean; data: any }>('/ai/extract-cedula', { method: 'POST', body: form }),
+  /** Carnet/certificado: base64. Devuelve `{success, data:{placa, serialNiv, serialMotor, color, marca, modelo...}}`. */
+  ocrProcess: (image: string, mimeType: string, type: 'cedula' | 'certificado') =>
+    bff<{ success: boolean; data: any }>('/ai/ocr-process', { method: 'POST', body: { image, mimeType, type } }),
+}
+
 // ── Geo (estados/municipios/ciudades) para Datos del Cliente ─
 export interface GeoOpcion { id: number; nombre: string }
 export const geoApi = {
