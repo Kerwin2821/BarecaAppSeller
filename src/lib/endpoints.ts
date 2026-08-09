@@ -274,6 +274,40 @@ export const teamApi = {
   unifiedCreate: (body: unknown) => bff<any>('/users/team/unified-create', { method: 'POST', body }),
 }
 
+// ── Funerario (planes/opciones de cobertura + emisión) ──────
+export interface PlanFunerario {
+  id: string
+  numero?: string
+  sumaAsegurada: number
+  cobertura: string
+  numeroAsegurado?: number
+  primaAnualSeg: number
+  primaAnualGrupo: number
+  activo: boolean
+  escalaEdad: { id?: string; desde: number; hasta: number | null; activo?: boolean | null }
+  productoId: string
+  proveedorId: string
+}
+
+export const funerarioApi = {
+  /** Lista de opciones de cobertura (planes funerarios). Réplica de getFuneralPlans(). */
+  planes: () =>
+    bff<PlanFunerario[] | ApiResponse<PlanFunerario[]>>('/clients/opciones-coberturas', {
+      params: { page: 0, size: 50 },
+    }),
+  /** ¿El documento tiene una póliza funeraria vigente? */
+  vigentePorDocumento: (documento: string) =>
+    bff<ApiResponse<any>>(`/clients/polizas-funerarios/v1/vigente/${encodeURIComponent(documento)}`, {
+      sinCierre: true,
+    }),
+  /** Crea la orden funeraria (débito). Réplica de createFuneralOrder. */
+  crearOrden: (body: unknown) =>
+    bff<ApiResponse<any>>('/clients/ordens/v1/addorden-client', { method: 'POST', body }),
+  /** Crea la orden funeraria por Pago Móvil. Réplica de createFuneralPagoMovilOrder. */
+  crearOrdenPagoMovil: (body: unknown) =>
+    bff<ApiResponse<any>>('/clients/ordens/v1/addorden-client-pagoMovil', { method: 'POST', body }),
+}
+
 // ── Público (verificación de póliza por QR) ─────────────────
 import { urlBff } from './api'
 export const publicApi = {

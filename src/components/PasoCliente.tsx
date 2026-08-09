@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { geoApi, type GeoOpcion } from '../lib/endpoints'
+import { catalogoApi, geoApi, type GeoOpcion } from '../lib/endpoints'
 import { mensajeDeError } from '../lib/api'
 import { ocrCarnet, ocrCedula, type FuenteImagen } from '../lib/ocr'
 import { fechaCorta, isoDia } from '../lib/formato'
@@ -18,6 +18,9 @@ export interface DatosCliente {
   apellidos: string
   genero: string
   fechaNacimiento: string | null
+  // Contacto
+  correo: string
+  telefono: string
   estadoId: number | null
   municipioId: number | null
   ciudadId: number | null
@@ -28,6 +31,10 @@ export interface DatosCliente {
   color: string
   marca: string
   modelo: string
+  version: string
+  anio: number | null
+  // Id del catálogo (cat_version_anio) cuando se elige por los desplegables.
+  catVersionAnioId: number | null
 }
 
 const TIPOS_DOC: OpcionDrop[] = [
@@ -58,9 +65,12 @@ function aGeo(r: any): GeoOpcion[] {
 export function PasoCliente({
   onAtras,
   onContinuar,
+  mostrarVehiculo = true,
 }: {
   onAtras: () => void
   onContinuar: (datos: DatosCliente) => void
+  /** El vehículo solo aplica a RCV/Casco; el funerario lo oculta. */
+  mostrarVehiculo?: boolean
 }) {
   const { avisar } = useToast()
   const [d, setD] = useState<DatosCliente>({
@@ -70,6 +80,8 @@ export function PasoCliente({
     apellidos: '',
     genero: '',
     fechaNacimiento: null,
+    correo: '',
+    telefono: '',
     estadoId: null,
     municipioId: null,
     ciudadId: null,
@@ -79,6 +91,9 @@ export function PasoCliente({
     color: '',
     marca: '',
     modelo: '',
+    version: '',
+    anio: null,
+    catVersionAnioId: null,
   })
   const set = <K extends keyof DatosCliente>(k: K, v: DatosCliente[K]) => setD((x) => ({ ...x, [k]: v }))
   const [ocrCargando, setOcrCargando] = useState<'' | 'cedula' | 'carnet'>('')
@@ -146,6 +161,15 @@ export function PasoCliente({
   const [pickerFecha, setPickerFecha] = useState(false)
   const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
 
+  // Catálogo de vehículos (cascada marca → modelo → versión → año).
+  const [marcasCat, setMarcasCat] = useState<{ id: string; nombre: string }[]>([])
+  const [modelosCat, setModelosCat] = useState<{ id: string; nombre: string }[]>([])
+  const [versionesCat, setVersionesCat] = useState<{ id: string; nombre: string }[]>([])
+  const [aniosCat, setAniosCat] = useState<{ id: string; anio: number }[]>([])
+  const [marcaId, setMarcaId] = useState<string | null>(null)
+  const [modeloId, setModeloId] = useState<string | null>(null)
+  const [versionId, setVersionId] = useState<string | null>(null)
+
   useEffect(() => {
     setCarga('estados', true)
     geoApi
@@ -153,7 +177,64 @@ export function PasoCliente({
       .then((r) => setEstados(aGeo(r)))
       .catch((e) => setError(mensajeDeError(e)))
       .finally(() => setCarga('estados', false))
+    // Marcas del catálogo (para el desplegable de vehículo).
+    setCarga('marcas', true)
+    catalogoApi
+      .marcas()
+      .then((r) => setMarcasCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
+      .catch(() => undefined)
+      .finally(() => setCarga('marcas', false))
   }, [])
+
+  const elegirMarca = useCallback((id: string) => {
+    const nom = marcasCat.find((m) => m.id === id)?.nombre ?? ''
+    setMarcaId(id)
+    setModeloId(null)
+    setVersionId(null)
+    setModelosCat([])
+    setVersionesCat([])
+    setAniosCat([])
+    setD((x) => ({ ...x, marca: nom, modelo: '', version: '', anio: null, catVersionAnioId: null }))
+    setCarga('modelos', true)
+    catalogoApi
+      .modelos(id)
+      .then((r) => setModelosCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
+      .catch(() => undefined)
+      .finally(() => setCarga('modelos', false))
+  }, [marcasCat])
+
+  const elegirModelo = useCallback((id: string) => {
+    const nom = modelosCat.find((m) => m.id === id)?.nombre ?? ''
+    setModeloId(id)
+    setVersionId(null)
+    setVersionesCat([])
+    setAniosCat([])
+    setD((x) => ({ ...x, modelo: nom, version: '', anio: null, catVersionAnioId: null }))
+    setCarga('versiones', true)
+    catalogoApi
+      .versiones(id)
+      .then((r) => setVersionesCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
+      .catch(() => undefined)
+      .finally(() => setCarga('versiones', false))
+  }, [modelosCat])
+
+  const elegirVersion = useCallback((id: string) => {
+    const nom = versionesCat.find((v) => v.id === id)?.nombre ?? ''
+    setVersionId(id)
+    setAniosCat([])
+    setD((x) => ({ ...x, version: nom, anio: null, catVersionAnioId: null }))
+    setCarga('anios', true)
+    catalogoApi
+      .anios(id)
+      .then((r) => setAniosCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
+      .catch(() => undefined)
+      .finally(() => setCarga('anios', false))
+  }, [versionesCat])
+
+  const elegirAnio = useCallback((idStr: string) => {
+    const opt = aniosCat.find((a) => String(a.id) === idStr)
+    setD((x) => ({ ...x, anio: opt?.anio ?? null, catVersionAnioId: opt ? Number(opt.id) : null }))
+  }, [aniosCat])
 
   const elegirEstado = useCallback((idStr: string) => {
     const id = Number(idStr)
@@ -173,6 +254,7 @@ export function PasoCliente({
     d.nombres.trim().length >= 2 &&
     d.apellidos.trim().length >= 2 &&
     !!d.genero &&
+    (d.correo.includes('@') || d.telefono.length >= 7) &&
     !!d.estadoId
 
   const fechaNac = d.fechaNacimiento ? new Date(`${d.fechaNacimiento}T12:00:00`) : new Date(2000, 0, 1)
@@ -189,12 +271,14 @@ export function PasoCliente({
           cargando={ocrCargando === 'cedula'}
           onCapturar={capturarCedula}
         />
-        <ZonaOCR
-          etiqueta="Carnet de circulación"
-          detalle="Extrae placa, seriales y color"
-          cargando={ocrCargando === 'carnet'}
-          onCapturar={capturarCarnet}
-        />
+        {mostrarVehiculo ? (
+          <ZonaOCR
+            etiqueta="Carnet de circulación"
+            detalle="Extrae placa, seriales y color"
+            cargando={ocrCargando === 'carnet'}
+            onCapturar={capturarCarnet}
+          />
+        ) : null}
       </Tarjeta>
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
@@ -246,15 +330,90 @@ export function PasoCliente({
       </Tarjeta>
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
+        <Text style={est.titulo}>Datos de Contacto</Text>
+        <Text style={est.hint}>Para enviar la póliza y notificaciones al cliente.</Text>
+        <Campo
+          etiqueta="Correo electrónico"
+          placeholder="cliente@correo.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={d.correo}
+          onChangeText={(t) => set('correo', t.trim())}
+        />
+        <Campo
+          etiqueta="Teléfono"
+          placeholder="04141234567"
+          keyboardType="phone-pad"
+          value={d.telefono}
+          onChangeText={(t) => set('telefono', t.replace(/[^0-9]/g, ''))}
+        />
+      </Tarjeta>
+
+      {mostrarVehiculo ? (
+      <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Datos del Vehículo</Text>
-        <Text style={est.hint}>Autocompletados del carnet; puedes corregirlos.</Text>
+        <Text style={est.hint}>Selecciona el vehículo del catálogo; los seriales vienen del carnet.</Text>
+        {marcasCat.length > 0 || cargando.marcas ? (
+          <>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Dropdown
+                  etiqueta="Marca"
+                  placeholder="Marca"
+                  opciones={marcasCat.map((m) => ({ valor: m.id, texto: m.nombre }))}
+                  valor={marcaId}
+                  onCambiar={elegirMarca}
+                  cargando={cargando.marcas}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Dropdown
+                  etiqueta="Modelo"
+                  placeholder="Modelo"
+                  opciones={modelosCat.map((m) => ({ valor: m.id, texto: m.nombre }))}
+                  valor={modeloId}
+                  onCambiar={elegirModelo}
+                  cargando={cargando.modelos}
+                  deshabilitado={!marcaId}
+                />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1.4 }}>
+                <Dropdown
+                  etiqueta="Versión"
+                  placeholder="Versión"
+                  opciones={versionesCat.map((v) => ({ valor: v.id, texto: v.nombre }))}
+                  valor={versionId}
+                  onCambiar={elegirVersion}
+                  cargando={cargando.versiones}
+                  deshabilitado={!modeloId}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Dropdown
+                  etiqueta="Año"
+                  placeholder="Año"
+                  opciones={aniosCat.map((a) => ({ valor: String(a.id), texto: String(a.anio) }))}
+                  valor={d.catVersionAnioId ? String(d.catVersionAnioId) : null}
+                  onCambiar={elegirAnio}
+                  cargando={cargando.anios}
+                  deshabilitado={!versionId}
+                />
+              </View>
+            </View>
+          </>
+        ) : (
+          // Fallback si el catálogo no cargó: captura libre de marca/modelo.
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Campo etiqueta="Marca" placeholder="Marca" value={d.marca} onChangeText={(t) => set('marca', t)} style={{ flex: 1 }} />
+            <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
+          </View>
+        )}
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Campo etiqueta="Placa" placeholder="AB123CD" autoCapitalize="characters" value={d.placa} onChangeText={(t) => set('placa', t.toUpperCase())} style={{ flex: 1 }} />
           <Campo etiqueta="Color" placeholder="Color" value={d.color} onChangeText={(t) => set('color', t)} style={{ flex: 1 }} />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Campo etiqueta="Marca" placeholder="Marca" value={d.marca} onChangeText={(t) => set('marca', t)} style={{ flex: 1 }} />
-          <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
         </View>
         <Campo
           etiqueta="Serial de carrocería / NIV"
@@ -285,6 +444,7 @@ export function PasoCliente({
           />
         </View>
       </Tarjeta>
+      ) : null}
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Dirección del Asegurado</Text>
@@ -295,7 +455,7 @@ export function PasoCliente({
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
         <Boton texto="← Atrás" variante="soft" onPress={onAtras} style={{ flex: 1 }} />
-        <Boton texto="Continuar — Conductor" onPress={() => onContinuar(d)} disabled={!listo} style={{ flex: 1.4 }} />
+        <Boton texto={mostrarVehiculo ? 'Continuar — Conductor' : 'Continuar — Pago'} onPress={() => onContinuar(d)} disabled={!listo} style={{ flex: 1.4 }} />
       </View>
     </View>
   )

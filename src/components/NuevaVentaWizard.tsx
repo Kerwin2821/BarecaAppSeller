@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
+import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
 import { ApiException, mensajeDeError } from '../lib/api'
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
@@ -18,6 +18,20 @@ const BANCOS: OpcionDrop[] = [
   { valor: '0108', texto: '0108 — Provincial' },
   { valor: '0191', texto: '0191 — BNC' },
 ]
+
+const TIPOS_DOC_TITULAR: OpcionDrop[] = [
+  { valor: 'V', texto: 'V' },
+  { valor: 'E', texto: 'E' },
+  { valor: 'J', texto: 'J' },
+  { valor: 'P', texto: 'P' },
+]
+
+/**
+ * Entorno QA (config "claude"): el débito real se hace por 1 Bs para poder
+ * repetir pruebas sin cobrar montos reales. En PROD se cobra el monto real.
+ */
+const ES_QA = /qa/i.test(process.env.EXPO_PUBLIC_BFF_URL ?? '')
+const MONTO_PRUEBA_BS = 1
 
 type TipoSeguro = 'rcv' | 'funerario'
 
@@ -74,6 +88,9 @@ function totalVenta(plan: any): string {
 export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const insets = useSafeAreaInsets()
   const [paso, setPaso] = useState(0)
+  const [cargando, setCargando] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
+  const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
 
   const [tipo, setTipo] = useState<TipoSeguro | null>(null)
   const [productos, setProductos] = useState<ProductoAseguradora[]>([])
@@ -88,6 +105,44 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
 
   const [planes, setPlanes] = useState<any[]>([])
   const [planIdx, setPlanIdx] = useState<number | null>(null)
+
+  // ── Funerario (planes por edad; individual/familiar) ──
+  const [planTipoFun, setPlanTipoFun] = useState<'individual' | 'familiar'>('individual')
+  const [beneficiarios, setBeneficiarios] = useState('1')
+  const [rangoEdad, setRangoEdad] = useState<'under65' | 'over65'>('under65')
+  const [planesFun, setPlanesFun] = useState<PlanFunerario[]>([])
+  const [planFunIdx, setPlanFunIdx] = useState<number | null>(null)
+  const [cotizandoFun, setCotizandoFun] = useState(false)
+
+  /** Plan funerario seleccionado, mapeado con su precio final (USD). */
+  const planFunSel = useMemo(() => {
+    if (planFunIdx == null) return null
+    const p = planesFun[planFunIdx]
+    if (!p) return null
+    const familiar = planTipoFun === 'familiar'
+    const cuenta = Math.max(1, Number(beneficiarios) || 1)
+    const finalPrice = familiar ? p.primaAnualGrupo : p.primaAnualSeg * cuenta
+    return { ...p, finalPrice, simbolo: 'USD', planType: planTipoFun, insuredCount: familiar ? undefined : cuenta, _fun: true as const }
+  }, [planFunIdx, planesFun, planTipoFun, beneficiarios])
+
+  const cotizarFun = useCallback(async () => {
+    setCotizandoFun(true)
+    setError(null)
+    setPlanesFun([])
+    setPlanFunIdx(null)
+    try {
+      const r = await funerarioApi.planes()
+      const data = (Array.isArray(r) ? r : (r?.data ?? [])) as PlanFunerario[]
+      const over65 = rangoEdad === 'over65'
+      const filtrados = data.filter((p) => p.activo && (over65 ? p.escalaEdad.desde >= 66 : p.escalaEdad.desde < 66))
+      setPlanesFun(filtrados)
+      if (filtrados.length === 0) setError('No hay planes funerarios para ese rango de edad.')
+    } catch (e) {
+      setError(mensajeDeError(e))
+    } finally {
+      setCotizandoFun(false)
+    }
+  }, [rangoEdad])
 
   // Adicionales de la cotización (como la web): puestos + APOV + Grúa.
   const [puestos, setPuestos] = useState('5')
@@ -117,10 +172,19 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
 
   const [cliente, setCliente] = useState<DatosCliente | null>(null)
   const [conductorTipo, setConductorTipo] = useState<'tomador' | 'otro'>('tomador')
+  const [conductor, setConductor] = useState({ tipoDoc: 'V', cedula: '', nombres: '', apellidos: '', telefono: '' })
+  const setCond = (k: keyof typeof conductor, v: string) => setConductor((c) => ({ ...c, [k]: v }))
+  const conductorListo =
+    conductorTipo === 'tomador' ||
+    (conductor.cedula.length >= 5 && conductor.nombres.trim().length >= 2 && conductor.apellidos.trim().length >= 2)
   const [referenciaPago, setReferenciaPago] = useState('')
   const [telefonoPago, setTelefonoPago] = useState('')
   const [bancoPago, setBancoPago] = useState('0169')
   const [metodoPago, setMetodoPago] = useState<'PAGO_MOVIL' | 'DEBITO'>('PAGO_MOVIL')
+  // Titular de la cuenta (cédula) — la web la pide en el débito.
+  const [tipoDocTitular, setTipoDocTitular] = useState('V')
+  const [cedulaTitular, setCedulaTitular] = useState('')
+  const [confirmaTelefono, setConfirmaTelefono] = useState(false)
   const [emitiendo, setEmitiendo] = useState(false)
   // Fases del pago (como el stepper de la web): datos → OTP → éxito.
   const [fasePago, setFasePago] = useState<'datos' | 'otp' | 'exito'>('datos')
@@ -144,6 +208,15 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
         incluirApov: apovOn,
         cantidadPuestos: Number(puestos) || undefined,
         conductor: conductorTipo,
+        conductorDatos:
+          conductorTipo === 'otro'
+            ? {
+                cedula: `${conductor.tipoDoc}-${conductor.cedula}`,
+                nombres: conductor.nombres,
+                apellidos: conductor.apellidos,
+                telefono: conductor.telefono || undefined,
+              }
+            : undefined,
         productoId: prod.productoId,
         grupoId,
         cliente: {
@@ -152,6 +225,8 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           apellidos: cliente.apellidos,
           sexo: cliente.genero,
           fechaNacimiento: cliente.fechaNacimiento,
+          correo: cliente.correo,
+          telefono: cliente.telefono,
           estadoId: cliente.estadoId,
           municipioId: cliente.municipioId,
           ciudadId: cliente.ciudadId,
@@ -163,6 +238,9 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           color: cliente.color,
           marca: cliente.marca,
           modelo: cliente.modelo,
+          version: cliente.version,
+          anio: cliente.anio,
+          catVersionAnioId: cliente.catVersionAnioId,
         },
         plan: planes[planIdx ?? 0],
       }
@@ -228,10 +306,6 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     setDescuentoOn(false)
     setError(null)
   }, [])
-
-  const [cargando, setCargando] = useState<Record<string, boolean>>({})
-  const [error, setError] = useState<string | null>(null)
-  const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
 
   // Aseguradoras (productos RCV) + clases al elegir RCV.
   useEffect(() => {
@@ -300,13 +374,19 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
 
   const puedeCotizar = !!productoId && !!claseId && !!grupoId
 
+  // El flujo funerario no tiene paso "Conductor": mostramos 3 pasos y mapeamos
+  // el índice visible (paso 3 = Pago → posición 2 en el stepper funerario).
+  const esFunerario = tipo === 'funerario'
+  const pasosVisibles = esFunerario ? ['Cotización', 'Datos del Cliente', 'Registro de Pago'] : PASOS
+  const pasoVisibleIdx = esFunerario && paso === 3 ? 2 : paso
+
   return (
     <View style={{ flex: 1, backgroundColor: color.bgApp }}>
       {/* Stepper */}
       <View style={est.stepper}>
-        {PASOS.map((p, i) => {
-          const activo = i === paso
-          const hecho = i < paso
+        {pasosVisibles.map((p, i) => {
+          const activo = i === pasoVisibleIdx
+          const hecho = i < pasoVisibleIdx
           return (
             <View key={p} style={est.stepItem}>
               <View style={[est.stepNum, activo && est.stepNumActivo, hecho && est.stepNumHecho]}>
@@ -516,12 +596,105 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                 ) : null}
               </>
             ) : tipo === 'funerario' ? (
-              <View style={{ marginTop: 8 }}>
-                <Alerta tipo="info">
-                  Cotización de servicio funerario: planes por edad del asegurado. Se completa en la siguiente
-                  iteración con su endpoint de planes.
-                </Alerta>
-              </View>
+              <>
+                <Text style={est.seccion}>2. Configura el plan funerario</Text>
+                <Tarjeta style={{ padding: 16, gap: 14 }}>
+                  {/* Tipo de plan */}
+                  <View>
+                    <Text style={est.label}>Tipo de Plan Funerario</Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      {([['individual', '👤 Individual'], ['familiar', '👪 Familiar']] as const).map(([v, t]) => (
+                        <Pressable
+                          key={v}
+                          onPress={() => {
+                            setPlanTipoFun(v)
+                            if (v === 'individual') setBeneficiarios('1')
+                          }}
+                          style={[est.metodoBtn, planTipoFun === v && est.metodoBtnOn]}
+                        >
+                          <Text style={{ fontSize: 12.5, fontWeight: '800', color: planTipoFun === v ? '#fff' : color.text2 }}>{t}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Cantidad de asegurados (solo individual) */}
+                  {planTipoFun === 'individual' ? (
+                    <Campo
+                      etiqueta="Cantidad de asegurados (1 a 5)"
+                      placeholder="1"
+                      keyboardType="number-pad"
+                      value={beneficiarios}
+                      onChangeText={(t) => {
+                        const n = Math.min(5, Math.max(1, Number(t.replace(/[^0-9]/g, '')) || 1))
+                        setBeneficiarios(String(n))
+                      }}
+                    />
+                  ) : (
+                    <Alerta tipo="info">El Plan Familiar cubre al grupo familiar con una prima única de grupo.</Alerta>
+                  )}
+
+                  {/* Rango de edad */}
+                  <View>
+                    <Text style={est.label}>Rango de edad del asegurado</Text>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      {([['under65', 'Hasta 65 años'], ['over65', '66 años o más']] as const).map(([v, t]) => (
+                        <Pressable key={v} onPress={() => setRangoEdad(v)} style={[est.metodoBtn, rangoEdad === v && est.metodoBtnOn]}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: rangoEdad === v ? '#fff' : color.text2 }}>{t}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+
+                  <Boton
+                    texto={cotizandoFun ? 'Buscando…' : 'Cotizar Planes Funerarios'}
+                    onPress={cotizarFun}
+                    cargando={cotizandoFun}
+                    style={{ marginTop: 4 }}
+                  />
+                </Tarjeta>
+
+                {/* Planes funerarios */}
+                {planesFun.length > 0 ? (
+                  <>
+                    <Text style={est.seccion}>3. Selecciona el plan</Text>
+                    <View style={{ gap: 12 }}>
+                      {planesFun.map((p, i) => {
+                        const familiar = planTipoFun === 'familiar'
+                        const cuenta = Math.max(1, Number(beneficiarios) || 1)
+                        const precio = familiar ? p.primaAnualGrupo : p.primaAnualSeg * cuenta
+                        const activo = i === planFunIdx
+                        return (
+                          <Pressable key={p.id} onPress={() => setPlanFunIdx(i)}>
+                            <Tarjeta style={[{ padding: 16 }, activo && { borderColor: color.primary, borderWidth: 2 }]}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={est.planTitulo}>Suma Asegurada: ${numero(p.sumaAsegurada)}</Text>
+                                {activo ? <Pildora color={color.primary} texto="Seleccionado" /> : null}
+                              </View>
+                              <Text style={[est.covNombre, { marginTop: 4 }]}>Cobertura: {p.cobertura}</Text>
+                              <Text style={[est.hint, { marginTop: 2 }]}>
+                                Edades {p.escalaEdad.desde}
+                                {p.escalaEdad.hasta ? `–${p.escalaEdad.hasta}` : '+'} años
+                                {familiar ? '' : ` · ${cuenta} asegurado${cuenta > 1 ? 's' : ''}`}
+                              </Text>
+                              <Text style={est.planPrima}>
+                                ${numero(precio)} <Text style={est.planPrimaSub}>USD / Anual</Text>
+                              </Text>
+                            </Tarjeta>
+                          </Pressable>
+                        )
+                      })}
+                    </View>
+
+                    <Boton
+                      texto="Continuar — Datos del Cliente"
+                      onPress={() => setPaso(1)}
+                      disabled={planFunIdx === null}
+                      style={{ marginTop: 16 }}
+                    />
+                  </>
+                ) : null}
+              </>
             ) : (
               <View style={{ marginTop: 8 }}>
                 <Alerta tipo="info">Elige un tipo de seguro para empezar la cotización.</Alerta>
@@ -531,10 +704,12 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
         ) : paso === 1 ? (
           // ── Paso 2 · Datos del Cliente ─────────────────────────
           <PasoCliente
+            mostrarVehiculo={!esFunerario}
             onAtras={() => setPaso(0)}
             onContinuar={(d) => {
               setCliente(d)
-              setPaso(2)
+              // Funerario no lleva paso de conductor: va directo a pago.
+              setPaso(esFunerario ? 3 : 2)
             }}
           />
         ) : paso === 2 ? (
@@ -561,11 +736,43 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
               )
             })}
             {conductorTipo === 'otro' ? (
-              <Alerta tipo="info">Los datos de un conductor distinto se capturan en la próxima iteración.</Alerta>
+              <View style={{ gap: 12, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ width: 96 }}>
+                    <Dropdown
+                      etiqueta="Tipo"
+                      opciones={[
+                        { valor: 'V', texto: 'V' },
+                        { valor: 'E', texto: 'E' },
+                        { valor: 'P', texto: 'P' },
+                      ]}
+                      valor={conductor.tipoDoc}
+                      onCambiar={(v) => setCond('tipoDoc', v)}
+                    />
+                  </View>
+                  <Campo
+                    etiqueta="Cédula"
+                    placeholder="12345678"
+                    keyboardType="number-pad"
+                    value={conductor.cedula}
+                    onChangeText={(t) => setCond('cedula', t.replace(/[^0-9]/g, ''))}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <Campo etiqueta="Nombres" placeholder="Nombres" value={conductor.nombres} onChangeText={(t) => setCond('nombres', t)} />
+                <Campo etiqueta="Apellidos" placeholder="Apellidos" value={conductor.apellidos} onChangeText={(t) => setCond('apellidos', t)} />
+                <Campo
+                  etiqueta="Teléfono (opcional)"
+                  placeholder="04141234567"
+                  keyboardType="phone-pad"
+                  value={conductor.telefono}
+                  onChangeText={(t) => setCond('telefono', t.replace(/[^0-9]/g, ''))}
+                />
+              </View>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
               <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(1)} style={{ flex: 1 }} />
-              <Boton texto="Siguiente Paso" onPress={() => setPaso(3)} style={{ flex: 1.4 }} />
+              <Boton texto="Siguiente Paso" onPress={() => setPaso(3)} disabled={!conductorListo} style={{ flex: 1.4 }} />
             </View>
           </Tarjeta>
         ) : fasePago === 'exito' ? (
@@ -871,6 +1078,7 @@ const est = StyleSheet.create({
   stepNumTexto: { fontSize: 12, fontWeight: '800', color: color.text3 },
   stepLabel: { fontSize: 10, color: color.text3, marginTop: 4, textAlign: 'center' },
   titulo: { fontSize: 20, fontWeight: '800', color: color.text, marginBottom: 14, letterSpacing: -0.3 },
+  label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
   seccion: { fontSize: 14.5, fontWeight: '800', color: color.text, marginTop: 22, marginBottom: 10 },
   hint: { fontSize: 12, color: color.text3, lineHeight: 17 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
