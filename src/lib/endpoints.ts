@@ -223,6 +223,34 @@ export const modificationApi = {
     bff<any>(`/modification-requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status } }),
 }
 
+// ── Geo (estados/municipios/ciudades) para Datos del Cliente ─
+export interface GeoOpcion { id: number; nombre: string }
+export const geoApi = {
+  estados: () => bff<GeoOpcion[]>('/clients/states', { params: { page: 0, size: 100, sort: 'nombre' } }),
+  municipios: (stateId: number) => bff<GeoOpcion[]>('/clients/municipios', { params: { stateId, page: 0, size: 400 } }),
+  ciudades: (stateId: number) => bff<GeoOpcion[]>('/clients/ciudads', { params: { stateId, page: 0, size: 400 } }),
+}
+
+// ── Soporte (tickets) ───────────────────────────────────────
+export const ticketsApi = {
+  mios: (loginId: string) =>
+    bff<{ success: boolean; data: any[] }>(`/tickets/mios/${encodeURIComponent(loginId)}`),
+  crear: (body: unknown) => bff<any>('/tickets', { method: 'POST', body }),
+}
+
+// ── Rachas / retos (bajo /reporte) ──────────────────────────
+export const rachasApi = {
+  retos: (perfil: string, id: string | number) =>
+    bff<{ success: boolean; data: any }>('/reporte/retos', { params: { perfil, id } }),
+  resumen: (perfil: string, id: string | number) =>
+    bff<{ success: boolean; data: any }>('/reporte/racha-resumen', { params: { perfil, id } }),
+}
+
+// ── Equipo (alta unificada de entidad) ──────────────────────
+export const teamApi = {
+  unifiedCreate: (body: unknown) => bff<any>('/users/team/unified-create', { method: 'POST', body }),
+}
+
 // ── Público (verificación de póliza por QR) ─────────────────
 import { urlBff } from './api'
 export const publicApi = {

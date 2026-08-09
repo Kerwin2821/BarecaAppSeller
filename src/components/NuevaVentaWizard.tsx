@@ -6,7 +6,8 @@ import { ApiException } from '../lib/api'
 import { mensajeDeError } from '../lib/api'
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
-import { Alerta, Boton, Pildora, Tarjeta } from './Ui'
+import { PasoCliente, type DatosCliente } from './PasoCliente'
+import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
 
 type TipoSeguro = 'rcv' | 'funerario'
@@ -55,6 +56,10 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
 
   const [planes, setPlanes] = useState<any[]>([])
   const [planIdx, setPlanIdx] = useState<number | null>(null)
+
+  const [cliente, setCliente] = useState<DatosCliente | null>(null)
+  const [conductorMismo, setConductorMismo] = useState(true)
+  const [referenciaPago, setReferenciaPago] = useState('')
 
   const [cargando, setCargando] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
@@ -291,28 +296,77 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
               </View>
             )}
           </>
-        ) : (
-          <Tarjeta style={{ padding: 18 }}>
-            <View style={est.nextBadge}>
-              <Text style={est.nextTexto}>SIGUIENTE ITERACIÓN</Text>
-            </View>
-            <Text style={est.pasoTitulo}>{PASOS[paso]}</Text>
-            <Text style={est.hint}>
-              {paso === 1
-                ? 'Datos del tomador y vehículo, con OCR de cédula y carnet de circulación (placa/seriales/color) y staging en el micro de clientes.'
-                : paso === 2
-                  ? 'Datos del conductor y evaluación de riesgo.'
-                  : 'Registro de pago (pago móvil / referencia) y emisión con cuadro y carnet.'}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <Boton texto="← Atrás" variante="soft" onPress={() => setPaso((p) => Math.max(0, p - 1))} style={{ flex: 1 }} />
-              {paso < PASOS.length - 1 ? (
-                <Boton texto="Siguiente →" variante="soft" onPress={() => setPaso((p) => p + 1)} style={{ flex: 1 }} />
-              ) : null}
+        ) : paso === 1 ? (
+          // ── Paso 2 · Datos del Cliente ─────────────────────────
+          <PasoCliente
+            onAtras={() => setPaso(0)}
+            onContinuar={(d) => {
+              setCliente(d)
+              setPaso(2)
+            }}
+          />
+        ) : paso === 2 ? (
+          // ── Paso 3 · Conductor ─────────────────────────────────
+          <Tarjeta style={{ padding: 18, gap: 12 }}>
+            <Text style={est.pasoTitulo}>Conductor</Text>
+            <Text style={est.hint}>Indica quién conduce habitualmente el vehículo.</Text>
+            <Pressable onPress={() => setConductorMismo((v) => !v)} style={est.check}>
+              <View style={[est.checkBox, conductorMismo && est.checkOn]}>
+                {conductorMismo ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>✓</Text> : null}
+              </View>
+              <Text style={{ fontSize: 13.5, color: color.text, flex: 1 }}>
+                El conductor es el mismo tomador ({cliente?.nombres} {cliente?.apellidos})
+              </Text>
+            </Pressable>
+            {!conductorMismo ? (
+              <Alerta tipo="info">Los datos de un conductor distinto se capturan en la próxima iteración.</Alerta>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+              <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(1)} style={{ flex: 1 }} />
+              <Boton texto="Continuar — Pago" onPress={() => setPaso(3)} style={{ flex: 1.4 }} />
             </View>
           </Tarjeta>
+        ) : (
+          // ── Paso 4 · Registro de Pago ──────────────────────────
+          <View style={{ gap: 12 }}>
+            <Tarjeta style={{ padding: 18, gap: 12 }}>
+              <Text style={est.pasoTitulo}>Registro de Pago</Text>
+              <View style={est.resumenBox}>
+                <FilaResumen k="Aseguradora" v={producto?.nombre ?? '—'} />
+                <FilaResumen k="Plan" v={planes[planIdx ?? 0]?.grupo?.descripcion ?? planes[planIdx ?? 0]?.descripcion ?? 'Plan RCV'} />
+                <FilaResumen k="Tomador" v={`${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() || '—'} />
+                <FilaResumen k="Documento" v={`${cliente?.tipoDoc ?? ''}-${cliente?.cedula ?? ''}`} />
+              </View>
+              <Campo
+                etiqueta="Referencia de pago móvil"
+                placeholder="Últimos 6+ dígitos"
+                keyboardType="number-pad"
+                value={referenciaPago}
+                onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
+              />
+              <Alerta tipo="info">
+                La confirmación del pago y la emisión de la póliza (cuadro + carnet) es el paso final del flujo real
+                y se integra en la próxima iteración: valida el pago contra la pasarela y crea la orden/póliza.
+              </Alerta>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(2)} style={{ flex: 1 }} />
+                <Boton texto="Emitir póliza" variante="exito" onPress={() => undefined} disabled={referenciaPago.length < 6} style={{ flex: 1.4 }} />
+              </View>
+            </Tarjeta>
+          </View>
         )}
       </ScrollView>
+    </View>
+  )
+}
+
+function FilaResumen({ k, v }: { k: string; v: string }) {
+  return (
+    <View style={est.filaResumen}>
+      <Text style={est.filaResumenK}>{k}</Text>
+      <Text style={est.filaResumenV} numberOfLines={1}>
+        {v}
+      </Text>
     </View>
   )
 }
@@ -390,4 +444,19 @@ const est = StyleSheet.create({
   pasoTitulo: { fontSize: 16, fontWeight: '800', color: color.text, marginBottom: 8 },
   nextBadge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
   nextTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
+  check: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  checkBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: color.borderInput,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkOn: { backgroundColor: color.primary, borderColor: color.primary },
+  resumenBox: { backgroundColor: color.bgCard, borderRadius: 12, padding: 12, gap: 6 },
+  filaResumen: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  filaResumenK: { fontSize: 12, color: color.text3 },
+  filaResumenV: { fontSize: 12.5, fontWeight: '700', color: color.text, flexShrink: 1, textAlign: 'right' },
 })
