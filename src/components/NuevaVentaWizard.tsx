@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
-import { ApiException } from '../lib/api'
-import { mensajeDeError } from '../lib/api'
+import { paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
+import { ApiException, mensajeDeError } from '../lib/api'
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
 import { PasoCliente, type DatosCliente } from './PasoCliente'
+import { useToast } from './Toast'
 import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
+
+const BANCOS: OpcionDrop[] = [
+  { valor: '0169', texto: '0169 — Mi Banco' },
+  { valor: '0102', texto: '0102 — Banco de Venezuela' },
+  { valor: '0105', texto: '0105 — Mercantil' },
+  { valor: '0134', texto: '0134 — Banesco' },
+  { valor: '0108', texto: '0108 — Provincial' },
+  { valor: '0191', texto: '0191 — BNC' },
+]
 
 type TipoSeguro = 'rcv' | 'funerario'
 
@@ -60,6 +69,68 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [cliente, setCliente] = useState<DatosCliente | null>(null)
   const [conductorMismo, setConductorMismo] = useState(true)
   const [referenciaPago, setReferenciaPago] = useState('')
+  const [telefonoPago, setTelefonoPago] = useState('')
+  const [bancoPago, setBancoPago] = useState('0169')
+  const [emitiendo, setEmitiendo] = useState(false)
+  const { avisar } = useToast()
+
+  const emitir = useCallback(() => {
+    const plan = planes[planIdx ?? 0]
+    Alert.alert(
+      'Emitir póliza',
+      'Se generará una orden de pago móvil REAL y se emitirá la póliza (cuadro + carnet). Esta acción mueve dinero y crea una póliza. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Emitir',
+          style: 'destructive',
+          onPress: async () => {
+            const prod = productos.find((p) => p.productoId === productoId)
+            if (!cliente || !prod) return
+            setEmitiendo(true)
+            try {
+              const payload = {
+                paymentMethod: 'PAGO_MOVIL',
+                paymentReference: referenciaPago,
+                banco: bancoPago,
+                telefonoPago,
+                productoId: prod.productoId,
+                grupoId,
+                cliente: {
+                  cedula: `${cliente.tipoDoc}-${cliente.cedula}`,
+                  nombres: cliente.nombres,
+                  apellidos: cliente.apellidos,
+                  sexo: cliente.genero,
+                  fechaNacimiento: cliente.fechaNacimiento,
+                  estadoId: cliente.estadoId,
+                  municipioId: cliente.municipioId,
+                  ciudadId: cliente.ciudadId,
+                },
+                vehiculo: {
+                  placa: cliente.placa,
+                  serialNiv: cliente.serialNiv,
+                  serialMotor: cliente.serialMotor,
+                  color: cliente.color,
+                  marca: cliente.marca,
+                  modelo: cliente.modelo,
+                },
+                plan,
+              }
+              const r = await paymentApi.finalizePolicy(payload)
+              const numeroPoliza = r?.data?.policyNumber ?? r?.policyNumber ?? r?.data?.numeroPoliza
+              const urlPdf = r?.data?.poliza ?? r?.data?.urlPoliza ?? r?.poliza
+              avisar(numeroPoliza ? `Póliza ${numeroPoliza} emitida.` : 'Póliza emitida.', 'ok')
+              if (urlPdf) Linking.openURL(urlPdf).catch(() => undefined)
+            } catch (e) {
+              avisar(mensajeDeError(e), 'error')
+            } finally {
+              setEmitiendo(false)
+            }
+          },
+        },
+      ],
+    )
+  }, [cliente, productos, productoId, grupoId, planes, planIdx, referenciaPago, bancoPago, telefonoPago, avisar])
 
   const [cargando, setCargando] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
@@ -337,6 +408,20 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                 <FilaResumen k="Tomador" v={`${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() || '—'} />
                 <FilaResumen k="Documento" v={`${cliente?.tipoDoc ?? ''}-${cliente?.cedula ?? ''}`} />
               </View>
+              <Text style={est.metodoTitulo}>Pago Móvil</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Dropdown etiqueta="Banco" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
+                </View>
+                <Campo
+                  etiqueta="Teléfono de pago"
+                  placeholder="04120000000"
+                  keyboardType="phone-pad"
+                  value={telefonoPago}
+                  onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
+                  style={{ flex: 1 }}
+                />
+              </View>
               <Campo
                 etiqueta="Referencia de pago móvil"
                 placeholder="Últimos 6+ dígitos"
@@ -345,12 +430,19 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                 onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
               />
               <Alerta tipo="info">
-                La confirmación del pago y la emisión de la póliza (cuadro + carnet) es el paso final del flujo real
-                y se integra en la próxima iteración: valida el pago contra la pasarela y crea la orden/póliza.
+                Al emitir se genera una orden de pago móvil real y se crea la póliza (cuadro + carnet). Confírmalo solo
+                cuando el pago esté hecho.
               </Alerta>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
                 <Boton texto="← Atrás" variante="soft" onPress={() => setPaso(2)} style={{ flex: 1 }} />
-                <Boton texto="Emitir póliza" variante="exito" onPress={() => undefined} disabled={referenciaPago.length < 6} style={{ flex: 1.4 }} />
+                <Boton
+                  texto={emitiendo ? 'Emitiendo…' : 'Emitir póliza'}
+                  variante="exito"
+                  onPress={emitir}
+                  cargando={emitiendo}
+                  disabled={referenciaPago.length < 6 || telefonoPago.length < 7}
+                  style={{ flex: 1.4 }}
+                />
               </View>
             </Tarjeta>
           </View>
@@ -442,6 +534,7 @@ const est = StyleSheet.create({
   covNombre: { fontSize: 11.5, color: color.text2 },
   covVal: { fontSize: 11.5, color: color.text, fontWeight: '700' },
   pasoTitulo: { fontSize: 16, fontWeight: '800', color: color.text, marginBottom: 8 },
+  metodoTitulo: { fontSize: 13, fontWeight: '800', color: color.primary },
   nextBadge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
   nextTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
   check: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },

@@ -223,6 +223,14 @@ export const modificationApi = {
     bff<any>(`/modification-requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status } }),
 }
 
+// ── Pagos / Emisión ─────────────────────────────────────────
+export const paymentApi = {
+  /** Config de la pasarela (bancos, pago móvil habilitado, etc.). */
+  config: () => bff<any>('/payments/config'),
+  /** Emisión final de la póliza tras confirmar el pago (crea cuadro + carnet). */
+  finalizePolicy: (body: unknown) => bff<any>('/payments/finalize-policy', { method: 'POST', body }),
+}
+
 // ── OCR (IA) de cédula y carnet de circulación ──────────────
 export const aiApi = {
   /** Cédula: multipart `file`. Devuelve `{success, data:{nombres, apellidos, numeroDocumento, fechaNacimiento, genero...}}`. */
