@@ -28,6 +28,19 @@ export interface DatosCarnetOCR {
 
 export type FuenteImagen = 'camara' | 'galeria'
 
+/** Normaliza una fecha del OCR (dd/mm/aaaa, dd-mm-aaaa o aaaa-mm-dd) a ISO yyyy-mm-dd. */
+function fechaOcrAIso(v: unknown): string | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined
+  const s = v.trim()
+  // Ya viene ISO
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  // dd/mm/aaaa o dd-mm-aaaa
+  m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})/)
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  return undefined
+}
+
 interface ImagenElegida {
   uri: string
   base64?: string
@@ -66,13 +79,15 @@ export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | 
   form.append('file', { uri: img.uri, name: 'cedula.jpg', type: img.mimeType } as any)
   form.append('purpose', 'kyc_cedula')
   const r = await aiApi.extractCedula(form)
-  const d = r?.data ?? {}
+  // La respuesta puede venir plana o envuelta en data/customer.
+  const d = r?.data?.customer ?? r?.data ?? (r as any) ?? {}
   return {
-    nombres: d.nombres ?? d.nombre,
-    apellidos: d.apellidos,
-    numeroDocumento: d.numeroDocumento ?? d.cedula ?? d.documento,
-    fechaNacimiento: d.fechaNacimiento ?? d.fecha_nacimiento,
-    genero: d.genero ?? d.sexo,
+    // El OCR usa campos SINGULARES: nombre / apellido / sexo.
+    nombres: d.nombre ?? d.nombres,
+    apellidos: d.apellido ?? d.apellidos,
+    numeroDocumento: d.cedula ?? d.numeroDocumento ?? d.documento,
+    fechaNacimiento: fechaOcrAIso(d.fechaNacimiento ?? d.fecha_nacimiento),
+    genero: d.sexo ?? d.genero,
   }
 }
 

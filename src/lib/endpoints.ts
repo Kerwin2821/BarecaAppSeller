@@ -236,9 +236,11 @@ export const aiApi = {
 // ── Geo (estados/municipios/ciudades) para Datos del Cliente ─
 export interface GeoOpcion { id: number; nombre: string }
 export const geoApi = {
-  estados: () => bff<GeoOpcion[]>('/clients/states', { params: { page: 0, size: 100, sort: 'nombre' } }),
-  municipios: (stateId: number) => bff<GeoOpcion[]>('/clients/municipios', { params: { stateId, page: 0, size: 400 } }),
-  ciudades: (stateId: number) => bff<GeoOpcion[]>('/clients/ciudads', { params: { stateId, page: 0, size: 400 } }),
+  estados: () => bff<any>('/clients/states', { params: { size: 50, sort: 'nombre,asc' } }),
+  municipios: (stateId: number) =>
+    bff<any>('/clients/municipios', { params: { 'stateId.equals': stateId, size: 600, sort: 'nombre,asc' } }),
+  ciudades: (stateId: number) =>
+    bff<any>('/clients/ciudads', { params: { 'stateId.equals': stateId, size: 2000, sort: 'nombre,asc' } }),
 }
 
 // ── Soporte (tickets) ───────────────────────────────────────

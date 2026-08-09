@@ -43,6 +43,12 @@ const GENEROS: OpcionDrop[] = [
 
 const aOpc = (xs: GeoOpcion[]): OpcionDrop[] => xs.map((x) => ({ valor: String(x.id), texto: x.nombre }))
 
+/** Normaliza la respuesta geo del BFF (array plano o {content}/{data}). */
+function aGeo(r: any): GeoOpcion[] {
+  const arr = Array.isArray(r) ? r : (r?.content ?? r?.data ?? [])
+  return (arr as any[]).filter((x) => x && x.id != null && x.nombre)
+}
+
 /**
  * Paso 2 del wizard — Datos del Cliente (tomador). Réplica del client-data-step:
  * documento, nombres, género, fecha de nacimiento y dirección (estado/municipio/
@@ -76,6 +82,13 @@ export function PasoCliente({
   })
   const set = <K extends keyof DatosCliente>(k: K, v: DatosCliente[K]) => setD((x) => ({ ...x, [k]: v }))
   const [ocrCargando, setOcrCargando] = useState<'' | 'cedula' | 'carnet'>('')
+  const [motorIgual, setMotorIgual] = useState(false)
+
+  // "Igual a Carrocería": el serial del motor copia el de la carrocería (NIV).
+  const alternarMotorIgual = (v: boolean) => {
+    setMotorIgual(v)
+    if (v) setD((x) => ({ ...x, serialMotor: x.serialNiv }))
+  }
 
   const capturarCedula = useCallback(async (fuente: FuenteImagen) => {
     setOcrCargando('cedula')
@@ -104,15 +117,18 @@ export function PasoCliente({
     try {
       const r = await ocrCarnet(fuente)
       if (r) {
-        setD((x) => ({
-          ...x,
-          placa: (r.placa ?? x.placa).toUpperCase(),
-          serialNiv: r.serialNiv ?? r.serialCarroceria ?? x.serialNiv,
-          serialMotor: r.serialMotor ?? x.serialMotor,
-          color: r.color ?? x.color,
-          marca: r.marca ?? x.marca,
-          modelo: r.modelo ?? x.modelo,
-        }))
+        setD((x) => {
+          const serialNiv = r.serialNiv ?? r.serialCarroceria ?? x.serialNiv
+          return {
+            ...x,
+            placa: (r.placa ?? x.placa).toUpperCase(),
+            serialNiv,
+            serialMotor: motorIgual ? serialNiv : (r.serialMotor ?? x.serialMotor),
+            color: r.color ?? x.color,
+            marca: r.marca ?? x.marca,
+            modelo: r.modelo ?? x.modelo,
+          }
+        })
         avisar('Carnet leído. Verifica placa y seriales.', 'ok')
       }
     } catch (e) {
@@ -120,7 +136,7 @@ export function PasoCliente({
     } finally {
       setOcrCargando('')
     }
-  }, [avisar])
+  }, [avisar, motorIgual])
 
   const [estados, setEstados] = useState<GeoOpcion[]>([])
   const [municipios, setMunicipios] = useState<GeoOpcion[]>([])
@@ -134,7 +150,7 @@ export function PasoCliente({
     setCarga('estados', true)
     geoApi
       .estados()
-      .then((r) => setEstados(r ?? []))
+      .then((r) => setEstados(aGeo(r)))
       .catch((e) => setError(mensajeDeError(e)))
       .finally(() => setCarga('estados', false))
   }, [])
@@ -147,9 +163,9 @@ export function PasoCliente({
     setMunicipios([])
     setCiudades([])
     setCarga('mun', true)
-    geoApi.municipios(id).then((r) => setMunicipios(r ?? [])).catch(() => undefined).finally(() => setCarga('mun', false))
+    geoApi.municipios(id).then((r) => setMunicipios(aGeo(r))).catch(() => undefined).finally(() => setCarga('mun', false))
     setCarga('ciu', true)
-    geoApi.ciudades(id).then((r) => setCiudades(r ?? [])).catch(() => undefined).finally(() => setCarga('ciu', false))
+    geoApi.ciudades(id).then((r) => setCiudades(aGeo(r))).catch(() => undefined).finally(() => setCarga('ciu', false))
   }, [])
 
   const listo =
@@ -240,8 +256,34 @@ export function PasoCliente({
           <Campo etiqueta="Marca" placeholder="Marca" value={d.marca} onChangeText={(t) => set('marca', t)} style={{ flex: 1 }} />
           <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
         </View>
-        <Campo etiqueta="Serial de carrocería / NIV" placeholder="Serial NIV" autoCapitalize="characters" value={d.serialNiv} onChangeText={(t) => set('serialNiv', t.toUpperCase())} />
-        <Campo etiqueta="Serial del motor" placeholder="Serial motor" autoCapitalize="characters" value={d.serialMotor} onChangeText={(t) => set('serialMotor', t.toUpperCase())} />
+        <Campo
+          etiqueta="Serial de carrocería / NIV"
+          placeholder="Serial NIV"
+          autoCapitalize="characters"
+          value={d.serialNiv}
+          onChangeText={(t) => {
+            const val = t.toUpperCase()
+            setD((x) => ({ ...x, serialNiv: val, serialMotor: motorIgual ? val : x.serialMotor }))
+          }}
+        />
+        <View>
+          <View style={est.serialLabel}>
+            <Text style={est.label}>Serial del motor</Text>
+            <Pressable onPress={() => alternarMotorIgual(!motorIgual)} style={est.igualBtn}>
+              <View style={[est.miniCheck, motorIgual && est.miniCheckOn]}>
+                {motorIgual ? <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>✓</Text> : null}
+              </View>
+              <Text style={{ fontSize: 11.5, color: color.primary, fontWeight: '700' }}>Igual a Carrocería</Text>
+            </Pressable>
+          </View>
+          <Campo
+            placeholder="Serial motor"
+            autoCapitalize="characters"
+            editable={!motorIgual}
+            value={d.serialMotor}
+            onChangeText={(t) => set('serialMotor', t.toUpperCase())}
+          />
+        </View>
       </Tarjeta>
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
@@ -329,4 +371,16 @@ const est = StyleSheet.create({
     paddingHorizontal: 10,
   },
   zonaBtnTexto: { fontSize: 11.5, fontWeight: '700', color: color.primaryDark },
+  serialLabel: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  igualBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  miniCheck: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: color.borderInput,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniCheckOn: { backgroundColor: color.primary, borderColor: color.primary },
 })
