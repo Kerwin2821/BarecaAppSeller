@@ -1,3 +1,4 @@
+import * as SecureStore from 'expo-secure-store'
 import type { ApiResponse } from './tipos'
 
 /**
@@ -38,6 +39,40 @@ export function registrarNoAutorizado(fn: () => void) {
   alNoAutorizado = fn
 }
 
+/* ── Cookie de sesión (manejo manual) ─────────────────────────
+ * El BFF autentica por la cookie `auth_token_v<prefix>`. El manejo automático
+ * de cookies de React Native no es confiable entre peticiones, así que la
+ * capturamos de la respuesta de `generaToken` y la reenviamos como cabecera
+ * `Cookie` en cada petición. Se persiste para restaurar la sesión al reabrir.
+ */
+const K_COOKIE = 'bareca.cookieSesion'
+let cookieSesion: string | null = null
+
+/** Carga la cookie persistida al arrancar (antes de validar la sesión). */
+export async function cargarCookieSesion(): Promise<void> {
+  try {
+    cookieSesion = await SecureStore.getItemAsync(K_COOKIE)
+  } catch {
+    cookieSesion = null
+  }
+}
+
+export function limpiarCookieSesion(): void {
+  cookieSesion = null
+  void SecureStore.deleteItemAsync(K_COOKIE)
+}
+
+/** Extrae `auth_token_v...=valor` de la cabecera Set-Cookie y la guarda. */
+function capturarCookie(res: Response): void {
+  const sc = res.headers.get('set-cookie')
+  if (!sc) return
+  const m = sc.match(/auth_token[^=;,\s]*=[^;,\s]+/g)
+  if (m && m.length > 0) {
+    cookieSesion = m.join('; ')
+    void SecureStore.setItemAsync(K_COOKIE, cookieSesion)
+  }
+}
+
 function url(ruta: string): string {
   if (/^https?:\/\//i.test(ruta)) return ruta
   return `${API_BASE}/${ruta.replace(/^\//, '')}`
@@ -76,6 +111,8 @@ export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promi
     Accept: 'application/json',
     'X-Portal-Id': PORTAL_ID,
   }
+  // Reenvía manualmente la cookie de sesión capturada (RN no la persiste fiable).
+  if (cookieSesion) headers['Cookie'] = cookieSesion
   const esForm = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !esForm) headers['Content-Type'] = 'application/json'
 
@@ -94,6 +131,9 @@ export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promi
     if ((e as Error)?.name === 'AbortError') throw e
     throw new ApiException(0, 'No se pudo conectar con el servidor. Verifique su conexión.')
   }
+
+  // Captura la cookie de sesión que setea el BFF (generaToken, etc.).
+  capturarCookie(res)
 
   if (res.status === 401 && !sinCierre) {
     if (alNoAutorizado) alNoAutorizado()

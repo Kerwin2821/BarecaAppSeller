@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { authApi, userApi } from './endpoints'
-import { registrarNoAutorizado } from './api'
+import { cargarCookieSesion, limpiarCookieSesion, registrarNoAutorizado } from './api'
 import { autenticarBiometria, biometriaHabilitada } from './biometria'
 import {
   borrarSesionGuardada,
@@ -84,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let vivo = true
     ;(async () => {
       try {
+        await cargarCookieSesion() // rehidrata la cookie antes de validar la sesión
         const loginId = await leerLoginId()
         const perfil = await leerPerfil()
         if (loginId && perfil) {
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     registrarNoAutorizado(() => {
       setUser(null)
       setAvisoCierre('Tu sesión expiró. Vuelve a iniciar sesión.')
+      limpiarCookieSesion()
       void borrarSesionGuardada()
     })
   }, [])
@@ -213,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // El cierre local siempre procede aunque el BFF no responda.
     }
+    limpiarCookieSesion()
     await borrarSesionGuardada()
     setUser(null)
     setCambioClave(null)

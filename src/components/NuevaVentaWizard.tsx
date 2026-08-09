@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora } from '../lib/endpoints'
+import { rcvApi, type ClaseVehiculo, type GrupoVehiculo, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
+import { ApiException } from '../lib/api'
 import { mensajeDeError } from '../lib/api'
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
@@ -43,6 +44,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
 
   const [tipo, setTipo] = useState<TipoSeguro | null>(null)
   const [productos, setProductos] = useState<ProductoAseguradora[]>([])
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const [productoId, setProductoId] = useState<string | null>(null)
 
   const [clases, setClases] = useState<ClaseVehiculo[]>([])
@@ -62,12 +64,16 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   useEffect(() => {
     if (tipo !== 'rcv') return
     setCarga('prod', true)
-    Promise.all([rcvApi.productos().catch(() => []), rcvApi.clases().catch(() => [])])
-      .then(([prods, cls]) => {
+    Promise.all([
+      rcvApi.productos().catch(() => []),
+      rcvApi.clases().catch(() => []),
+      rcvApi.proveedores().catch(() => []),
+    ])
+      .then(([prods, cls, provs]) => {
         setProductos((prods ?? []).filter((p) => /RCV/i.test(p.nombre)))
         setClases(cls ?? [])
+        setProveedores(provs ?? [])
       })
-      .catch((e) => setError(mensajeDeError(e)))
       .finally(() => setCarga('prod', false))
   }, [tipo])
 
@@ -94,17 +100,30 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     setPlanes([])
     setPlanIdx(null)
     try {
-      const prov = producto.proveedor?.proveedorId ?? ''
+      // El proveedorId (UUID) se resuelve cruzando producto.proveedor.id contra
+      // la lista de proveedores (en el producto viene null), como en la web.
+      const prov =
+        proveedores.find((p) => p.id === producto.proveedor?.id)?.proveedorId ??
+        producto.proveedor?.proveedorId ??
+        ''
+      if (!prov) {
+        setError('No se pudo resolver la aseguradora. Reintenta.')
+        return
+      }
       const r = await rcvApi.planes(grupoId, producto.productoId, prov)
       const data = Array.isArray(r) ? r : (r?.data ?? [])
       setPlanes(data)
       if (data.length === 0) setError('No se obtuvieron planes para esta combinación.')
     } catch (e) {
-      setError(mensajeDeError(e))
+      if (e instanceof ApiException && e.status === 401) {
+        setError('Tu sesión no está autorizada para cotizar. Vuelve a iniciar sesión.')
+      } else {
+        setError(mensajeDeError(e))
+      }
     } finally {
       setCarga('planes', false)
     }
-  }, [grupoId, producto])
+  }, [grupoId, producto, proveedores])
 
   const puedeCotizar = !!productoId && !!claseId && !!grupoId
 

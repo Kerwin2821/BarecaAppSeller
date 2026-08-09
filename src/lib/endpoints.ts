@@ -144,6 +144,11 @@ export interface ProductoAseguradora {
   nombre: string
   proveedor?: { proveedorId?: string | null; id?: number; nombre?: string }
 }
+export interface Proveedor {
+  id: number
+  proveedorId: string
+  nombre: string
+}
 export const rcvApi = {
   clases: () =>
     bff<ClaseVehiculo[]>('/policies/clase-vehiculos', {
@@ -156,6 +161,9 @@ export const rcvApi = {
   /** Aseguradoras = productos. Se filtran a RCV en la pantalla. */
   productos: () =>
     bff<ProductoAseguradora[]>('/users/productos', { params: { page: 0, size: 100 }, sinCierre: true }),
+  /** Proveedores (para resolver el proveedorId UUID por producto.proveedor.id). */
+  proveedores: () =>
+    bff<Proveedor[]>('/users/proveedores', { params: { page: 0, size: 100 }, sinCierre: true }),
   /** Planes (tarifas de cobertura) por grupo + producto + proveedor. */
   planes: (grupoId: string, productoId: string, proveedorId: string) =>
     bff<{ data: any[] } | any[]>(
