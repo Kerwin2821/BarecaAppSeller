@@ -39,13 +39,6 @@ const TIPOS_DOC_TITULAR: OpcionDrop[] = [
   { valor: 'P', texto: 'P' },
 ]
 
-/**
- * Entorno QA (config "claude"): el débito real se hace por 1 Bs para poder
- * repetir pruebas sin cobrar montos reales. En PROD se cobra el monto real.
- */
-const ES_QA = /qa/i.test(process.env.EXPO_PUBLIC_BFF_URL ?? '')
-const MONTO_PRUEBA_BS = 1
-
 type TipoSeguro = 'rcv' | 'funerario'
 
 const PASOS = ['Cotización', 'Datos del Cliente', 'Conductor', 'Registro de Pago']
