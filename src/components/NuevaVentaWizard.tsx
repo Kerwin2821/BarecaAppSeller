@@ -42,6 +42,18 @@ const RIESGOS = [
 const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionDrop[] =>
   xs.map((x) => ({ valor: id(x), texto: txt(x) }))
 
+/** Total a pagar del plan (Bs si el backend lo trae, si no TCR en EUR). */
+function totalVenta(plan: any): string {
+  if (!plan) return '—'
+  const bs = plan.montoTotalVES ?? plan.totalVes ?? plan.primaTotalBs ?? plan.montoTotal ?? plan.finalTotalVES
+  if (typeof bs === 'number' && bs > 0) return moneda(bs, 'Bs.')
+  const tcr = plan.primaAnualTCR ?? plan.finalPrice ?? plan.prima
+  const tasa = plan.tasaBcv ?? plan.tasaCambio ?? plan.tasa
+  if (typeof tcr === 'number' && typeof tasa === 'number' && tasa > 0) return moneda(tcr * tasa, 'Bs.')
+  if (typeof tcr === 'number') return `${moneda(tcr, '')} EUR`
+  return '—'
+}
+
 /**
  * Nueva Venta — flujo RCV real (réplica del quote-step del portal):
  * tipo de seguro → aseguradora → clase + grupo de vehículo → info de riesgo →
@@ -71,6 +83,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [referenciaPago, setReferenciaPago] = useState('')
   const [telefonoPago, setTelefonoPago] = useState('')
   const [bancoPago, setBancoPago] = useState('0169')
+  const [metodoPago, setMetodoPago] = useState<'PAGO_MOVIL' | 'DEBITO'>('PAGO_MOVIL')
   const [emitiendo, setEmitiendo] = useState(false)
   const { avisar } = useToast()
 
@@ -398,37 +411,83 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
             </View>
           </Tarjeta>
         ) : (
-          // ── Paso 4 · Registro de Pago ──────────────────────────
+          // ── Paso 4 · Registro del Pago (como la web) ───────────
           <View style={{ gap: 12 }}>
-            <Tarjeta style={{ padding: 18, gap: 12 }}>
-              <Text style={est.pasoTitulo}>Registro de Pago</Text>
+            {/* Resumen de la venta */}
+            <Tarjeta style={{ padding: 16 }}>
+              <Text style={est.pasoTitulo}>Registro del Pago</Text>
               <View style={est.resumenBox}>
                 <FilaResumen k="Aseguradora" v={producto?.nombre ?? '—'} />
                 <FilaResumen k="Plan" v={planes[planIdx ?? 0]?.grupo?.descripcion ?? planes[planIdx ?? 0]?.descripcion ?? 'Plan RCV'} />
                 <FilaResumen k="Tomador" v={`${cliente?.nombres ?? ''} ${cliente?.apellidos ?? ''}`.trim() || '—'} />
                 <FilaResumen k="Documento" v={`${cliente?.tipoDoc ?? ''}-${cliente?.cedula ?? ''}`} />
               </View>
-              <Text style={est.metodoTitulo}>Pago Móvil</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <Dropdown etiqueta="Banco" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
-                </View>
-                <Campo
-                  etiqueta="Teléfono de pago"
-                  placeholder="04120000000"
-                  keyboardType="phone-pad"
-                  value={telefonoPago}
-                  onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
-                  style={{ flex: 1 }}
-                />
-              </View>
-              <Campo
-                etiqueta="Referencia de pago móvil"
-                placeholder="Últimos 6+ dígitos"
-                keyboardType="number-pad"
-                value={referenciaPago}
-                onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
-              />
+            </Tarjeta>
+
+            {/* Total a pagar */}
+            <Tarjeta style={est.totalCard}>
+              <Text style={est.totalLabel}>Total a {metodoPago === 'PAGO_MOVIL' ? 'Pagar' : 'Debitar'}</Text>
+              <Text style={est.totalValor}>{totalVenta(planes[planIdx ?? 0])}</Text>
+            </Tarjeta>
+
+            {/* Método de pago */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {([['PAGO_MOVIL', '📲 Pago Móvil'], ['DEBITO', '💳 Débito Inmediato']] as const).map(([m, t]) => (
+                <Pressable key={m} onPress={() => setMetodoPago(m)} style={[est.metodoBtn, metodoPago === m && est.metodoBtnOn]}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: metodoPago === m ? '#fff' : color.text2 }}>{t}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Tarjeta style={{ padding: 18, gap: 14 }}>
+              {metodoPago === 'PAGO_MOVIL' ? (
+                <>
+                  <Text style={est.metodoTitulo}>Datos para el Pago Móvil</Text>
+                  <Text style={est.hint}>Indícanos desde dónde realizarás el pago móvil para identificarlo.</Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
+                    </View>
+                    <Campo
+                      etiqueta="Teléfono emisor"
+                      placeholder="04141234567"
+                      keyboardType="phone-pad"
+                      value={telefonoPago}
+                      onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                  <Campo
+                    etiqueta="Referencia de pago móvil"
+                    placeholder="Últimos 6+ dígitos"
+                    keyboardType="number-pad"
+                    value={referenciaPago}
+                    onChangeText={(t) => setReferenciaPago(t.replace(/[^0-9]/g, ''))}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={est.metodoTitulo}>Datos del Titular de la Cuenta</Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Dropdown etiqueta="Banco emisor" opciones={BANCOS} valor={bancoPago} onCambiar={setBancoPago} />
+                    </View>
+                    <Campo
+                      etiqueta="Teléfono afiliado"
+                      placeholder="04141234567"
+                      keyboardType="phone-pad"
+                      value={telefonoPago}
+                      onChangeText={(t) => setTelefonoPago(t.replace(/[^0-9]/g, ''))}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                  <Alerta tipo="info">
+                    En débito inmediato el banco envía un código (OTP) para autorizar el débito. Ese paso con OTP se
+                    confirma con el equipo de backend.
+                  </Alerta>
+                </>
+              )}
+
               <Alerta tipo="info">
                 Al emitir se genera una orden de pago móvil real y se crea la póliza (cuadro + carnet). Confírmalo solo
                 cuando el pago esté hecho.
@@ -535,6 +594,19 @@ const est = StyleSheet.create({
   covVal: { fontSize: 11.5, color: color.text, fontWeight: '700' },
   pasoTitulo: { fontSize: 16, fontWeight: '800', color: color.text, marginBottom: 8 },
   metodoTitulo: { fontSize: 13, fontWeight: '800', color: color.primary },
+  totalCard: { padding: 16, alignItems: 'center', backgroundColor: color.primaryTint, borderColor: color.primaryLight },
+  totalLabel: { fontSize: 11.5, fontWeight: '700', color: color.text3, letterSpacing: 0.4 },
+  totalValor: { fontSize: 26, fontWeight: '800', color: color.primaryDark, marginTop: 4, letterSpacing: -0.5 },
+  metodoBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: color.borderSoft,
+    backgroundColor: color.white,
+  },
+  metodoBtnOn: { backgroundColor: color.primary, borderColor: color.primary },
   nextBadge: { alignSelf: 'flex-start', backgroundColor: color.warningBg, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 99, marginBottom: 10 },
   nextTexto: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4, color: color.amber },
   check: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
