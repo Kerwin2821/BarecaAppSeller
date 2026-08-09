@@ -58,9 +58,9 @@ function aGeo(r: any): GeoOpcion[] {
 
 /**
  * Paso 2 del wizard — Datos del Cliente (tomador). Réplica del client-data-step:
- * documento, nombres, género, fecha de nacimiento y dirección (estado/municipio/
- * ciudad desde el micro de clientes). La subida de cédula/carnet con OCR llega
- * en la próxima iteración (requiere selector de imágenes).
+ * documento, nombres, género, fecha de nacimiento, contacto, catálogo de
+ * vehículo y dirección (estado/municipio/ciudad). Incluye captura por OCR de la
+ * cédula y el carnet de circulación (cámara/galería).
  */
 export function PasoCliente({
   onAtras,
