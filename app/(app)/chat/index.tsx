@@ -1,12 +1,13 @@
 import { useCallback } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { ticketsApi } from '@/lib/endpoints'
 import { fechaRelativa } from '@/lib/formato'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
-import { Alerta, Avatar, Pildora, Tarjeta } from '@/components/Ui'
+import { Avatar, Pildora, Tarjeta } from '@/components/Ui'
 import { color } from '@/lib/tema'
 
 function metaEstado(estado: string | undefined | null): { c: string; t: string } {
@@ -19,12 +20,12 @@ function metaEstado(estado: string | undefined | null): { c: string; t: string }
 }
 
 /**
- * Chat de soporte. Cada ticket es una conversación. El hilo de mensajes en
- * tiempo real vive en Firebase Firestore (chats/ticket_<id>/messages); su
- * integración requiere el SDK de Firebase + la config del proyecto, por lo que
- * aquí se listan las conversaciones y su estado.
+ * Chat de soporte. Cada ticket es una conversación; el hilo en tiempo real vive
+ * en Firebase Firestore (chats/ticket_<id>/messages). Aquí se listan las
+ * conversaciones y se abre cada hilo tocándolo.
  */
-export default function Chat() {
+export default function ChatLista() {
+  const router = useRouter()
   const { user } = useAuth()
 
   const cargar = useCallback(async () => {
@@ -66,30 +67,32 @@ export default function Chat() {
             const fecha = t?.fecha ?? t?.createdAt ?? t?.fechaCreacion
             const est = metaEstado(t?.estado)
             return (
-              <Tarjeta key={t?.id ?? i} style={{ padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <Avatar texto={String(asunto).slice(0, 2).toUpperCase()} size={42} invertido />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={stl.asunto} numberOfLines={1}>
-                    {asunto}
-                  </Text>
-                  <Text style={stl.ultimo} numberOfLines={1}>
-                    {ultimo}
-                  </Text>
-                  {fecha ? <Text style={stl.fecha}>{fechaRelativa(fecha)}</Text> : null}
-                </View>
-                <Pildora color={est.c} texto={est.t} />
-              </Tarjeta>
+              <Pressable
+                key={t?.id ?? i}
+                onPress={() =>
+                  t?.id && router.push({ pathname: '/chat/[id]', params: { id: String(t.id), asunto: String(asunto) } })
+                }
+                style={({ pressed }) => pressed && { opacity: 0.7 }}
+              >
+                <Tarjeta style={{ padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <Avatar texto={String(asunto).slice(0, 2).toUpperCase()} size={42} invertido />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={stl.asunto} numberOfLines={1}>
+                      {asunto}
+                    </Text>
+                    <Text style={stl.ultimo} numberOfLines={1}>
+                      {ultimo}
+                    </Text>
+                    {fecha ? <Text style={stl.fecha}>{fechaRelativa(fecha)}</Text> : null}
+                  </View>
+                  <Pildora color={est.c} texto={est.t} />
+                  <Text style={{ fontSize: 18, color: color.text4 }}>›</Text>
+                </Tarjeta>
+              </Pressable>
             )
           })}
         </View>
       )}
-
-      <View style={{ marginTop: 14 }}>
-        <Alerta tipo="info">
-          El hilo de mensajes en tiempo real usa Firebase Firestore. Su integración (SDK + config del proyecto
-          bareca-d9254) es el paso pendiente para enviar/recibir mensajes dentro de cada conversación.
-        </Alerta>
-      </View>
     </Pantalla>
   )
 }
