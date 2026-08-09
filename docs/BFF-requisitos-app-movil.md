@@ -44,9 +44,46 @@ Hoy la sesión vive en una cookie httpOnly que el BFF no expone en el body. Para
 - CORS no aplica a un cliente nativo (no hay `Origin` que validar).
 - No agregar la app al whitelist de `policy-payments` (ese es el flujo público). El app es **autenticado**.
 
+## 4. Pago / emisión (Nueva Venta) — endpoints que consume el app
+
+El app replica **1:1** el flujo del portal (`PaymentStepStateService` + estrategias RCV/Funeraria).
+Todas estas rutas ya existen en el BFF; solo hay que **confirmar que responden con la cookie del app**
+(van autenticadas, no por el whitelist público):
+
+**Carga inicial del paso de pago**
+- `GET /api/policies/orden-seguros/v1/convertir-monedas/1/EUR/VES` y `.../1/USD/VES` (tasa BCV)
+- `GET /api/policies/pre-ordende-pagos/v1/lista-bancos`
+- `GET /api/payments/config` (gateways + `pagoMovilHabilitado`)
+- `POST /api/policies/orden-seguros/v1/comision-prepagada` | `.../comision-descuento`
+
+**Staging del cliente + vehículo (antes de la orden)**
+- `GET /api/clients/clientes?numeroDocumento.equals=…` · `POST /api/clients/clientes/v1/add-cliente`
+- `POST /api/policies/registros-vehiculos/v1/addRegisterVehicle`
+
+**Débito Inmediato:** `vigente/{placa}` → `addorden-client` → `debito-inmediato` (OTP) →
+`consultar-operacion` (polling 20×6 s) → `payments/finalize-policy`.
+**Pago Móvil:** `addorden-client-pagoMovil` → `GET /api/webhook/status/{orden}` (polling 60×10 s) → finalize.
+**Funerario:** `clients/ordens/v1/addorden-client(-pagoMovil)` → `clients/polizas-funerarios/v1/finalizar-poliza`.
+
+> El app **no** implementa el socket.io de tiempo real del pago móvil; usa el **polling de respaldo**
+> (`/api/webhook/status/{orden}`) que el propio BFF ya expone. Confirmar que ese endpoint está accesible
+> para el app.
+
+### Monto de prueba (QA)
+El app envía `totalPagar: 1` cuando `EXPO_PUBLIC_MONTO_REAL=false` (QA), igual que `environment.montoReal`
+en la web. Así el **débito inmediato** cobra **1 Bs** y se puede repetir la prueba n veces. En PROD se pondrá
+`EXPO_PUBLIC_MONTO_REAL=true`.
+
+### A verificar contra QA (mueve dinero real, 1 Bs)
+- Que `add-cliente` y `addRegisterVehicle` acepten el payload del app (los construimos según
+  `AddCustomerPayload`/`RegisterVehiclePayload`; confirmar nombres de campos de dirección/teléfono).
+- Que `debito-inmediato` dispare el SMS del banco al teléfono afiliado (en la web el OTP lo envía el banco
+  al crear/enviar el débito, no hay endpoint aparte).
+
 ## Resumen de lo que hay que pedir
 
 1. **Turnstile:** habilitar el sitekey para el WebView del app (allowed hostnames) o dar un sitekey de app/QA.
 2. **Sesión:** confirmar que la cookie actual sirve desde el app **o** (recomendado) exponer el token para
    `Authorization: Bearer` cuando la petición venga del app.
-3. Un **usuario vendedor de QA** para probar login → Mis Ventas → comisiones extremo a extremo.
+3. Un **usuario vendedor de QA** para probar login → Nueva Venta (RCV débito 1 Bs) → Mis Ventas.
+4. Confirmar que los endpoints de **pago/emisión** (§4) responden al app con la cookie de sesión.
