@@ -1,8 +1,17 @@
+import { useEffect, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Switch, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { etiquetaRol } from '@/lib/roles'
 import { iniciales } from '@/lib/formato'
+import {
+  autenticarBiometria,
+  biometriaDisponible,
+  biometriaHabilitada,
+  setBiometriaHabilitada,
+  tipoBiometria,
+} from '@/lib/biometria'
+import { useToast } from '@/components/Toast'
 import { Pantalla } from '@/components/Pantalla'
 import { Avatar, Boton, Tarjeta, TituloSeccion } from '@/components/Ui'
 import { color } from '@/lib/tema'
@@ -19,7 +28,35 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor?: string | null }) 
 export default function Perfil() {
   const router = useRouter()
   const { user, cerrarSesion } = useAuth()
+  const { avisar } = useToast()
   const nombre = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
+
+  const [bioDisponible, setBioDisponible] = useState(false)
+  const [bioHabilitada, setBioHabilitada] = useState(false)
+  const [bioTipo, setBioTipo] = useState('Huella')
+
+  useEffect(() => {
+    ;(async () => {
+      setBioDisponible(await biometriaDisponible())
+      setBioHabilitada(await biometriaHabilitada())
+      setBioTipo(await tipoBiometria())
+    })()
+  }, [])
+
+  const alternarBio = async (v: boolean) => {
+    if (v) {
+      // Confirma con la huella antes de activarla.
+      const ok = await autenticarBiometria(`Activar desbloqueo con ${bioTipo.toLowerCase()}`)
+      if (!ok) return
+      await setBiometriaHabilitada(true)
+      setBioHabilitada(true)
+      avisar(`Desbloqueo con ${bioTipo.toLowerCase()} activado`, 'ok')
+    } else {
+      await setBiometriaHabilitada(false)
+      setBioHabilitada(false)
+      avisar('Desbloqueo biométrico desactivado', 'info')
+    }
+  }
 
   const salir = async () => {
     await cerrarSesion()
@@ -53,6 +90,26 @@ export default function Perfil() {
       </Tarjeta>
 
       <TituloSeccion>Seguridad</TituloSeccion>
+      {bioDisponible ? (
+        <Tarjeta style={{ padding: 16, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: color.text }}>
+                Desbloqueo con {bioTipo.toLowerCase()}
+              </Text>
+              <Text style={{ fontSize: 11.5, color: color.text2, marginTop: 2, lineHeight: 16 }}>
+                Abre el app con tu {bioTipo.toLowerCase()} mientras tu sesión siga activa (sin repetir clave).
+              </Text>
+            </View>
+            <Switch
+              value={bioHabilitada}
+              onValueChange={alternarBio}
+              trackColor={{ true: color.primary, false: '#CBD5E1' }}
+              thumbColor="#fff"
+            />
+          </View>
+        </Tarjeta>
+      ) : null}
       <Tarjeta style={{ padding: 16, gap: 10 }}>
         <Text style={{ fontSize: 12.5, color: color.text2, lineHeight: 18 }}>
           Para cambiar tu contraseña usa el flujo de recuperación por correo.

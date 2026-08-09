@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { authApi, userApi } from './endpoints'
 import { registrarNoAutorizado } from './api'
+import { autenticarBiometria, biometriaHabilitada } from './biometria'
 import {
   borrarSesionGuardada,
   guardarLoginId,
@@ -40,6 +41,9 @@ interface AuthCtx {
   autenticado: boolean
   cambioClave: CambioClaveRequerido | null
   avisoCierre: string | null
+  /** true cuando hay sesión pero el app está bloqueado esperando la huella. */
+  bloqueado: boolean
+  desbloquear: () => Promise<boolean>
   limpiarAviso: () => void
   iniciarSesion: (datos: DatosLogin) => Promise<{ requiereCambio: boolean }>
   cerrarSesion: () => Promise<void>
@@ -72,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [cambioClave, setCambioClave] = useState<CambioClaveRequerido | null>(null)
   const [avisoCierre, setAvisoCierre] = useState<string | null>(null)
+  const [bloqueado, setBloqueado] = useState(false)
 
   // Restauración de sesión al arrancar (equivale a tryRestoreSession del portal:
   // valida la cookie contra el BFF y rehidrata el perfil guardado).
@@ -85,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const r = await authApi.validarToken(loginId)
           if (vivo && r.data?.valido) {
             setUser({ ...perfil, loginId })
+            // Si el usuario habilitó la huella, el app arranca bloqueado.
+            if (await biometriaHabilitada()) setBloqueado(true)
           } else if (vivo) {
             await borrarSesionGuardada()
           }
@@ -210,6 +217,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setCambioClave(null)
     setAvisoCierre(null)
+    setBloqueado(false)
+  }, [])
+
+  const desbloquear = useCallback(async () => {
+    const ok = await autenticarBiometria()
+    if (ok) setBloqueado(false)
+    return ok
   }, [])
 
   const refrescarPerfil = useCallback(async () => {
@@ -228,12 +242,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       autenticado: !!user,
       cambioClave,
       avisoCierre,
+      bloqueado,
+      desbloquear,
       limpiarAviso: () => setAvisoCierre(null),
       iniciarSesion,
       cerrarSesion,
       refrescarPerfil,
     }),
-    [listo, user, cambioClave, avisoCierre, iniciarSesion, cerrarSesion, refrescarPerfil],
+    [listo, user, cambioClave, avisoCierre, bloqueado, desbloquear, iniciarSesion, cerrarSesion, refrescarPerfil],
   )
 
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>
