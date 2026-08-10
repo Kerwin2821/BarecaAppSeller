@@ -47,6 +47,27 @@ interface ImagenElegida {
   mimeType: string
 }
 
+const espera = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * Ejecuta la llamada al OCR y, si falla con un error transitorio del gateway
+ * (502/503/504/timeout), reintenta una vez tras una breve pausa. El OCR (Gemini)
+ * a veces tarda y el BFF corta con 502; el reintento suele resolverlo sin que el
+ * vendedor tenga que volver a tomar la foto.
+ */
+async function conReintentoGateway<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (e) {
+    const msg = String((e as any)?.message ?? e)
+    const status = (e as any)?.status
+    const transitorio = status === 502 || status === 503 || status === 504 || /50[234]|gateway|timeout|tiempo|Failed to fetch/i.test(msg)
+    if (!transitorio) throw e
+    await espera(1200)
+    return await fn()
+  }
+}
+
 async function elegir(fuente: FuenteImagen, conBase64: boolean): Promise<ImagenElegida | null> {
   if (fuente === 'camara') {
     const perm = await ImagePicker.requestCameraPermissionsAsync()
@@ -79,7 +100,7 @@ export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | 
   form.append('file', { uri: img.uri, name: 'cedula.jpg', type: img.mimeType } as any)
   form.append('user_id', 'guest')
   form.append('purpose', 'kyc_cedula')
-  const r = await aiApi.extractCedula(form)
+  const r = await conReintentoGateway(() => aiApi.extractCedula(form))
   // La respuesta puede venir plana o envuelta en data/customer.
   const d = r?.data?.customer ?? r?.data ?? (r as any) ?? {}
   return {
@@ -97,7 +118,7 @@ export async function ocrCarnet(fuente: FuenteImagen): Promise<DatosCarnetOCR | 
   const img = await elegir(fuente, true)
   if (!img) return null
   if (!img.base64) throw new Error('No se pudo leer la imagen.')
-  const r = await aiApi.ocrProcess(img.base64, img.mimeType, 'certificado')
+  const r = await conReintentoGateway(() => aiApi.ocrProcess(img.base64!, img.mimeType, 'certificado'))
   const d = r?.data ?? {}
   return {
     placa: d.placa,
