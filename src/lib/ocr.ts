@@ -1,10 +1,19 @@
 import * as ImagePicker from 'expo-image-picker'
-import { aiApi } from './endpoints'
+import { aiApi, ocrApi } from './endpoints'
 
 /**
- * Captura de documentos con OCR (réplica del client-data-step del portal):
- * - Cédula → `/api/ai/extract-cedula` (multipart) → datos del tomador.
- * - Carnet de circulación → `/api/ai/ocr-process` (base64) → datos del vehículo.
+ * Captura de documentos con OCR — réplica EXACTA del client-data-step del portal.
+ *
+ * Flujo NORMAL (Nueva Venta):
+ *  - Cédula  → `/clients/clientes/process-cedula` (primario) → si falla o viene
+ *    incompleto (sin nombre/cédula) → fallback **Gemini** `/ai/ocr-process`.
+ *  - Carnet  → `/clients/clientes/process-certificado` (primario) → si falla o
+ *    viene incompleto (sin placa/marca/modelo) → fallback **Gemini** `/ai/ocr-process`.
+ *  En QA el primario suele dar 403, así que en la práctica lee con Gemini.
+ *
+ * Flujo EXPRESS (Venta Rápida): la cédula usa `/ai/extract-cedula`.
+ *
+ * El OCR es autocompletado: si todo falla, el vendedor ingresa los datos a mano.
  */
 
 export interface DatosCedulaOCR {
@@ -28,17 +37,25 @@ export interface DatosCarnetOCR {
 
 export type FuenteImagen = 'camara' | 'galeria'
 
+const OCR_TIMEOUT_MS = 30000
+
 /** Normaliza una fecha del OCR (dd/mm/aaaa, dd-mm-aaaa o aaaa-mm-dd) a ISO yyyy-mm-dd. */
 function fechaOcrAIso(v: unknown): string | undefined {
   if (typeof v !== 'string' || !v.trim()) return undefined
   const s = v.trim()
-  // Ya viene ISO
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (m) return `${m[1]}-${m[2]}-${m[3]}`
-  // dd/mm/aaaa o dd-mm-aaaa
   m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})/)
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
   return undefined
+}
+
+/** Corta la promesa a los `ms` (como el timeout(30000) del portal). */
+function conTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error('El servicio de OCR no respondió a tiempo.')), ms)),
+  ])
 }
 
 interface ImagenElegida {
@@ -47,28 +64,7 @@ interface ImagenElegida {
   mimeType: string
 }
 
-const espera = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
-
-/**
- * Ejecuta la llamada al OCR y, si falla con un error transitorio del gateway
- * (502/503/504/timeout), reintenta una vez tras una breve pausa. El OCR (Gemini)
- * a veces tarda y el BFF corta con 502; el reintento suele resolverlo sin que el
- * vendedor tenga que volver a tomar la foto.
- */
-async function conReintentoGateway<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn()
-  } catch (e) {
-    const msg = String((e as any)?.message ?? e)
-    const status = (e as any)?.status
-    const transitorio = status === 502 || status === 503 || status === 504 || /50[234]|gateway|timeout|tiempo|Failed to fetch/i.test(msg)
-    if (!transitorio) throw e
-    await espera(1200)
-    return await fn()
-  }
-}
-
-async function elegir(fuente: FuenteImagen, conBase64: boolean): Promise<ImagenElegida | null> {
+async function elegir(fuente: FuenteImagen): Promise<ImagenElegida | null> {
   if (fuente === 'camara') {
     const perm = await ImagePicker.requestCameraPermissionsAsync()
     if (!perm.granted) throw new Error('Permiso de cámara denegado.')
@@ -76,33 +72,22 @@ async function elegir(fuente: FuenteImagen, conBase64: boolean): Promise<ImagenE
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!perm.granted) throw new Error('Permiso de galería denegado.')
   }
-  const opts: ImagePicker.ImagePickerOptions = {
-    mediaTypes: ['images'],
-    quality: 0.7,
-    base64: conBase64,
-    allowsEditing: false,
-  }
-  const r =
-    fuente === 'camara'
-      ? await ImagePicker.launchCameraAsync(opts)
-      : await ImagePicker.launchImageLibraryAsync(opts)
+  // Pedimos base64 siempre: el fallback Gemini lo necesita.
+  const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.7, base64: true, allowsEditing: false }
+  const r = fuente === 'camara' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts)
   if (r.canceled || !r.assets?.[0]) return null
   const a = r.assets[0]
   return { uri: a.uri, base64: a.base64 ?? undefined, mimeType: a.mimeType ?? 'image/jpeg' }
 }
 
-/** Captura la cédula y extrae los datos del tomador. */
-export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | null> {
-  const img = await elegir(fuente, false)
-  if (!img) return null
+function archivo(img: ImagenElegida, nombre: string): FormData {
   const form = new FormData()
   // React Native acepta { uri, name, type } como parte de archivo en FormData.
-  form.append('file', { uri: img.uri, name: 'cedula.jpg', type: img.mimeType } as any)
-  form.append('user_id', 'guest')
-  form.append('purpose', 'kyc_cedula')
-  const r = await conReintentoGateway(() => aiApi.extractCedula(form))
-  // La respuesta puede venir plana o envuelta en data/customer.
-  const d = r?.data?.customer ?? r?.data ?? (r as any) ?? {}
+  form.append('file', { uri: img.uri, name: nombre, type: img.mimeType } as any)
+  return form
+}
+
+function mapearCedula(d: any): DatosCedulaOCR {
   return {
     // El OCR usa campos SINGULARES: nombre / apellido / sexo.
     nombres: d.nombre ?? d.nombres,
@@ -112,22 +97,76 @@ export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | 
     genero: d.sexo ?? d.genero,
   }
 }
+const cedulaIncompleta = (d: any) => !d || !(d.nombre ?? d.nombres) || !(d.cedula ?? d.numeroDocumento)
 
-/** Captura el carnet de circulación y extrae los datos del vehículo. */
-export async function ocrCarnet(fuente: FuenteImagen): Promise<DatosCarnetOCR | null> {
-  const img = await elegir(fuente, true)
-  if (!img) return null
-  if (!img.base64) throw new Error('No se pudo leer la imagen.')
-  const r = await conReintentoGateway(() => aiApi.ocrProcess(img.base64!, img.mimeType, 'certificado'))
-  const d = r?.data ?? {}
+function mapearCarnet(d: any): DatosCarnetOCR {
+  const serialNiv = d.serialNiv ?? d.serial_niv ?? d.niv ?? d.serialCarroceria
   return {
     placa: d.placa,
-    serialNiv: d.serialNiv ?? d.serial_niv ?? d.niv,
-    serialCarroceria: d.serialCarroceria ?? d.serialNiv,
+    serialNiv,
+    serialCarroceria: d.serialCarroceria ?? serialNiv,
     serialMotor: d.serialMotor ?? d.serial_motor,
     color: d.color,
     marca: d.marca,
     modelo: d.modelo,
     anio: d.anio ? String(d.anio) : undefined,
   }
+}
+const carnetIncompleto = (d: any) => !d || !d.placa || !d.marca || !d.modelo
+
+/**
+ * Captura la cédula y extrae los datos del tomador.
+ * @param express usa el OCR del flujo Express (`/ai/extract-cedula`) en vez del primario.
+ */
+export async function ocrCedula(fuente: FuenteImagen, express = false): Promise<DatosCedulaOCR | null> {
+  const img = await elegir(fuente)
+  if (!img) return null
+
+  if (express) {
+    const form = archivo(img, 'cedula.jpg')
+    form.append('user_id', 'guest')
+    form.append('purpose', 'kyc_cedula')
+    const r = await conTimeout(aiApi.extractCedula(form), OCR_TIMEOUT_MS)
+    return mapearCedula(r?.data?.customer ?? r?.data ?? (r as any) ?? {})
+  }
+
+  // 1) Primario: process-cedula.
+  let d: any = null
+  try {
+    const r = await conTimeout(ocrApi.processCedula(archivo(img, 'cedula.jpg')), OCR_TIMEOUT_MS)
+    d = r?.data ?? {}
+    if (cedulaIncompleta(d)) d = null
+  } catch {
+    d = null
+  }
+  // 2) Fallback Gemini.
+  if (!d) {
+    if (!img.base64) throw new Error('No se pudo leer la imagen.')
+    const r = await conTimeout(aiApi.ocrProcess(img.base64, img.mimeType, 'cedula'), OCR_TIMEOUT_MS)
+    d = r?.data ?? {}
+  }
+  return mapearCedula(d)
+}
+
+/** Captura el carnet de circulación y extrae los datos del vehículo. */
+export async function ocrCarnet(fuente: FuenteImagen): Promise<DatosCarnetOCR | null> {
+  const img = await elegir(fuente)
+  if (!img) return null
+
+  // 1) Primario: process-certificado.
+  let d: any = null
+  try {
+    const r = await conTimeout(ocrApi.processCertificado(archivo(img, 'carnet.jpg')), OCR_TIMEOUT_MS)
+    d = r?.data ?? {}
+    if (carnetIncompleto(d)) d = null
+  } catch {
+    d = null
+  }
+  // 2) Fallback Gemini.
+  if (!d) {
+    if (!img.base64) throw new Error('No se pudo leer la imagen.')
+    const r = await conTimeout(aiApi.ocrProcess(img.base64, img.mimeType, 'certificado'), OCR_TIMEOUT_MS)
+    d = r?.data ?? {}
+  }
+  return mapearCarnet(d)
 }

@@ -293,12 +293,24 @@ export const paymentApi = {
 
 // ── OCR (IA) de cédula y carnet de circulación ──────────────
 export const aiApi = {
-  /** Cédula: multipart `file`. Devuelve `{success, data:{nombres, apellidos, numeroDocumento, fechaNacimiento, genero...}}`. */
+  /** Cédula (Flujo Express): multipart `file`. Proxy del BFF al OCR externo. */
   extractCedula: (form: FormData) =>
     bff<{ success: boolean; data: any }>('/ai/extract-cedula', { method: 'POST', body: form }),
-  /** Carnet/certificado: base64. Devuelve `{success, data:{placa, serialNiv, serialMotor, color, marca, modelo...}}`. */
+  /** Fallback Gemini (cédula o certificado) por base64. Réplica de processImageWithGemini. */
   ocrProcess: (image: string, mimeType: string, type: 'cedula' | 'certificado') =>
     bff<{ success: boolean; data: any }>('/ai/ocr-process', { method: 'POST', body: { image, mimeType, type } }),
+}
+
+/**
+ * OCR primario (flujo normal): micro de clientes. En QA suele dar 403 y el
+ * llamador cae al fallback de Gemini (`aiApi.ocrProcess`). `sinCierre` evita que
+ * un 401/403 cierre la sesión (equivale al SKIP_ERROR_HANDLING de la web).
+ */
+export const ocrApi = {
+  processCedula: (form: FormData) =>
+    bff<{ statusCode?: number; data: any }>('/clients/clientes/process-cedula', { method: 'POST', body: form, sinCierre: true }),
+  processCertificado: (form: FormData) =>
+    bff<{ statusCode?: number; data: any }>('/clients/clientes/process-certificado', { method: 'POST', body: form, sinCierre: true }),
 }
 
 // ── Geo (estados/municipios/ciudades) para Datos del Cliente ─

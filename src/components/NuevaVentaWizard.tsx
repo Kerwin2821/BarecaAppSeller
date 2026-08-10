@@ -693,6 +693,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           // ── Paso 2 · Datos del Cliente ─────────────────────────
           <PasoCliente
             mostrarVehiculo={!esFunerario}
+            express={express}
             onAtras={() => setPaso(0)}
             onContinuar={(d) => {
               setCliente(d)

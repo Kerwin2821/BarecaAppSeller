@@ -79,11 +79,14 @@ export function PasoCliente({
   onAtras,
   onContinuar,
   mostrarVehiculo = true,
+  express = false,
 }: {
   onAtras: () => void
   onContinuar: (datos: DatosCliente) => void
   /** El vehículo solo aplica a RCV/Casco; el funerario lo oculta. */
   mostrarVehiculo?: boolean
+  /** En Venta Express la cédula usa el OCR de `/ai/extract-cedula`. */
+  express?: boolean
 }) {
   const { avisar } = useToast()
   const [d, setD] = useState<DatosCliente>({
@@ -123,7 +126,7 @@ export function PasoCliente({
   const capturarCedula = useCallback(async (fuente: FuenteImagen) => {
     setOcrCedulaCargando(true)
     try {
-      const r = await ocrCedula(fuente)
+      const r = await ocrCedula(fuente, express)
       if (r) {
         setD((x) => ({
           ...x,
@@ -140,7 +143,7 @@ export function PasoCliente({
     } finally {
       setOcrCedulaCargando(false)
     }
-  }, [avisar])
+  }, [avisar, express])
 
   const capturarCarnet = useCallback(async (fuente: FuenteImagen) => {
     setOcrCarnetCargando(true)
