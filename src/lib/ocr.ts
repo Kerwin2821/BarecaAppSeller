@@ -77,6 +77,7 @@ export async function ocrCedula(fuente: FuenteImagen): Promise<DatosCedulaOCR | 
   const form = new FormData()
   // React Native acepta { uri, name, type } como parte de archivo en FormData.
   form.append('file', { uri: img.uri, name: 'cedula.jpg', type: img.mimeType } as any)
+  form.append('user_id', 'guest')
   form.append('purpose', 'kyc_cedula')
   const r = await aiApi.extractCedula(form)
   // La respuesta puede venir plana o envuelta en data/customer.

@@ -57,6 +57,19 @@ function aGeo(r: any): GeoOpcion[] {
 }
 
 /**
+ * Mensaje amable para fallos de OCR. Si el servicio no respondió (502/5xx/timeout)
+ * el vendedor puede seguir a mano; si es otra cosa (permiso, foto ilegible) se
+ * muestra el detalle real. El OCR es autocompletado: nunca bloquea la venta.
+ */
+function mensajeOcr(e: unknown, cual: string): string {
+  const raw = mensajeDeError(e)
+  if (/50[0-9]|bad gateway|gateway|status code 5|no respond|timeout|tiempo|Failed to fetch|conect/i.test(raw)) {
+    return `No pudimos leer ${cual}: el servicio de OCR no está disponible ahora. Ingresa los datos manualmente.`
+  }
+  return raw
+}
+
+/**
  * Paso 2 del wizard — Datos del Cliente (tomador). Réplica del client-data-step:
  * documento, nombres, género, fecha de nacimiento, contacto, catálogo de
  * vehículo y dirección (estado/municipio/ciudad). Incluye captura por OCR de la
@@ -96,7 +109,9 @@ export function PasoCliente({
     catVersionAnioId: null,
   })
   const set = <K extends keyof DatosCliente>(k: K, v: DatosCliente[K]) => setD((x) => ({ ...x, [k]: v }))
-  const [ocrCargando, setOcrCargando] = useState<'' | 'cedula' | 'carnet'>('')
+  // Cargas de OCR independientes: la cédula y el carnet pueden leerse a la vez.
+  const [ocrCedulaCargando, setOcrCedulaCargando] = useState(false)
+  const [ocrCarnetCargando, setOcrCarnetCargando] = useState(false)
   const [motorIgual, setMotorIgual] = useState(false)
 
   // "Igual a Carrocería": el serial del motor copia el de la carrocería (NIV).
@@ -106,7 +121,7 @@ export function PasoCliente({
   }
 
   const capturarCedula = useCallback(async (fuente: FuenteImagen) => {
-    setOcrCargando('cedula')
+    setOcrCedulaCargando(true)
     try {
       const r = await ocrCedula(fuente)
       if (r) {
@@ -121,14 +136,14 @@ export function PasoCliente({
         avisar('Cédula leída. Verifica los datos.', 'ok')
       }
     } catch (e) {
-      avisar(mensajeDeError(e), 'error')
+      avisar(mensajeOcr(e, 'la cédula'), 'error')
     } finally {
-      setOcrCargando('')
+      setOcrCedulaCargando(false)
     }
   }, [avisar])
 
   const capturarCarnet = useCallback(async (fuente: FuenteImagen) => {
-    setOcrCargando('carnet')
+    setOcrCarnetCargando(true)
     try {
       const r = await ocrCarnet(fuente)
       if (r) {
@@ -147,9 +162,9 @@ export function PasoCliente({
         avisar('Carnet leído. Verifica placa y seriales.', 'ok')
       }
     } catch (e) {
-      avisar(mensajeDeError(e), 'error')
+      avisar(mensajeOcr(e, 'el carnet'), 'error')
     } finally {
-      setOcrCargando('')
+      setOcrCarnetCargando(false)
     }
   }, [avisar, motorIgual])
 
@@ -268,14 +283,14 @@ export function PasoCliente({
         <ZonaOCR
           etiqueta="Documento de identidad"
           detalle="Cédula / RIF del tomador"
-          cargando={ocrCargando === 'cedula'}
+          cargando={ocrCedulaCargando}
           onCapturar={capturarCedula}
         />
         {mostrarVehiculo ? (
           <ZonaOCR
             etiqueta="Carnet de circulación"
             detalle="Extrae placa, seriales y color"
-            cargando={ocrCargando === 'carnet'}
+            cargando={ocrCarnetCargando}
             onCapturar={capturarCarnet}
           />
         ) : null}
