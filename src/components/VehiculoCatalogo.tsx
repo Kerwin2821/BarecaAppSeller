@@ -210,14 +210,6 @@ export function VehiculoCatalogo({
       setMarcaTexto(''); setModeloTexto(''); setVersionTexto('')
       if (!y || y < ANIO_MIN) {
         setAnioSel(null); setMarcas([])
-        // Sin año válido pero con marca/modelo del OCR → mostrarlos como texto libre
-        // (el vendedor elige el año arriba); no se pierden los datos del carnet.
-        if (prefill.marca || prefill.modelo) {
-          setMarcaManual(true); setMarcaTexto(prefill.marca ?? '')
-          setModeloManual(true); setModeloTexto(prefill.modelo ?? '')
-          setVersionManual(true)
-          emitir({ catVersionAnioId: null, marca: prefill.marca ?? '', modelo: prefill.modelo ?? '', version: '', anio: null })
-        }
         return
       }
       setAnioSel(y)
@@ -238,18 +230,11 @@ export function VehiculoCatalogo({
             const vs = desenv(await catalogoApi.versiones(mo.id, y))
             if (!vivo) return
             setVersiones(vs) // marca+modelo del catálogo; el vendedor elige la versión
-          } else if (prefill.modelo) {
-            // Modelo del OCR no está en el catálogo → texto libre (se guarda tal cual).
-            setModeloManual(true); setModeloTexto(prefill.modelo); setVersionManual(true)
-            emitir({ catVersionAnioId: null, marca: m.nombre, modelo: prefill.modelo, version: '', anio: y })
           }
-        } else if (prefill.marca) {
-          // Marca del OCR no está en el catálogo → texto libre en marca/modelo/versión.
-          setMarcaManual(true); setMarcaTexto(prefill.marca)
-          setModeloManual(true); setModeloTexto(prefill.modelo ?? '')
-          setVersionManual(true)
-          emitir({ catVersionAnioId: null, marca: prefill.marca, modelo: prefill.modelo ?? '', version: '', anio: y })
+          // Si el modelo no matchea, dejamos el desplegable de modelos cargado para que
+          // el vendedor lo elija (y así se cargan las versiones) — igual que la web.
         }
+        // Si la marca no matchea, se deja el desplegable de marcas cargado para elegir.
       } catch {
         /* red falla → el vendedor completa a mano */
       } finally {

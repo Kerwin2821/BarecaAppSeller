@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
+import * as Location from 'expo-location'
 import { geoApi, validacionApi, type GeoOpcion } from '../lib/endpoints'
 import { VehiculoCatalogo, type PrefillVehiculo, type SeleccionVehiculo } from './VehiculoCatalogo'
 import { mensajeDeError } from '../lib/api'
@@ -68,6 +69,19 @@ function aInternacional(phone: string): string {
 function aGeo(r: any): GeoOpcion[] {
   const arr = Array.isArray(r) ? r : (r?.content ?? r?.data ?? [])
   return (arr as any[]).filter((x) => x && x.id != null && x.nombre)
+}
+
+/** Normaliza nombres de lugares para comparar (sin tildes/signos, mayúsculas). */
+const normLugar = (s?: string | null) =>
+  (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '')
+
+/** Mejor coincidencia geo por nombre (exacta → contiene). */
+function matchGeo(list: GeoOpcion[], texto?: string | null): GeoOpcion | null {
+  const t = normLugar(texto)
+  if (!t || !list.length) return null
+  const exact = list.find((o) => normLugar(o.nombre) === t)
+  if (exact) return exact
+  return list.find((o) => normLugar(o.nombre).includes(t) || t.includes(normLugar(o.nombre))) ?? null
 }
 
 /**
@@ -302,6 +316,51 @@ export function PasoCliente({
     geoApi.ciudades(id).then((r) => setCiudades(aGeo(r))).catch(() => undefined).finally(() => setCarga('ciu', false))
   }, [])
 
+  // Autoselección de estado/municipio/ciudad por GPS (reverse geocoding).
+  const [ubicando, setUbicando] = useState(false)
+  const ubicarPorGps = useCallback(async () => {
+    setUbicando(true)
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== 'granted') {
+        avisar('Permiso de ubicación denegado.', 'error')
+        return
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      const geo = (await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }))?.[0]
+      if (!geo) {
+        avisar('No se pudo determinar la ubicación.', 'error')
+        return
+      }
+      const nEstado = geo.region ?? ''
+      const nMunicipio = geo.subregion ?? geo.district ?? ''
+      const nCiudad = geo.city ?? geo.district ?? ''
+      const est = matchGeo(estados, nEstado)
+      if (!est) {
+        avisar(`No ubicamos el estado detectado${nEstado ? ` ("${nEstado}")` : ''}. Selecciónalo a mano.`, 'info')
+        return
+      }
+      set('estadoId', est.id)
+      set('municipioId', null)
+      set('ciudadId', null)
+      const [muns, ciuds] = await Promise.all([
+        geoApi.municipios(est.id).then(aGeo).catch(() => [] as GeoOpcion[]),
+        geoApi.ciudades(est.id).then(aGeo).catch(() => [] as GeoOpcion[]),
+      ])
+      setMunicipios(muns)
+      setCiudades(ciuds)
+      const mun = matchGeo(muns, nMunicipio) ?? matchGeo(muns, nCiudad)
+      const ciu = matchGeo(ciuds, nCiudad) ?? matchGeo(ciuds, nMunicipio)
+      if (mun) set('municipioId', mun.id)
+      if (ciu) set('ciudadId', ciu.id)
+      avisar(`📍 ${est.nombre}${mun ? ` · ${mun.nombre}` : ''}${ciu ? ` · ${ciu.nombre}` : ''}`, 'ok')
+    } catch (e) {
+      avisar(mensajeDeError(e), 'error')
+    } finally {
+      setUbicando(false)
+    }
+  }, [estados, avisar])
+
   const listo =
     d.cedula.trim().length >= 5 &&
     d.nombres.trim().length >= 2 &&
@@ -471,7 +530,11 @@ export function PasoCliente({
       ) : null}
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
-        <Text style={est.titulo}>Dirección del Asegurado</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={[est.titulo, { flex: 1 }]}>Dirección del Asegurado</Text>
+          <Boton texto={ubicando ? 'Ubicando…' : '📍 Mi ubicación'} variante="soft" onPress={ubicarPorGps} cargando={ubicando} style={{ paddingVertical: 8, paddingHorizontal: 12 }} />
+        </View>
+        <Text style={est.hint}>Toca “Mi ubicación” para autoseleccionar estado, municipio y ciudad por GPS.</Text>
         <Dropdown etiqueta="Estado" placeholder="Selecciona un estado" opciones={aOpc(estados)} valor={d.estadoId ? String(d.estadoId) : null} onCambiar={elegirEstado} cargando={cargando.estados} />
         <Dropdown etiqueta="Municipio" placeholder="Selecciona un municipio" opciones={aOpc(municipios)} valor={d.municipioId ? String(d.municipioId) : null} onCambiar={(v) => set('municipioId', Number(v))} cargando={cargando.mun} deshabilitado={!d.estadoId} />
         <Dropdown etiqueta="Ciudad" placeholder="Selecciona una ciudad" opciones={aOpc(ciudades)} valor={d.ciudadId ? String(d.ciudadId) : null} onCambiar={(v) => set('ciudadId', Number(v))} cargando={cargando.ciu} deshabilitado={!d.estadoId} />

@@ -37,6 +37,12 @@
           "photosPermission": "BARECA Vendedores usa tus fotos para leer la cédula y el carnet de circulación.",
           "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BARECA Vendedores usa tu ubicación para autoseleccionar el estado, municipio y ciudad del asegurado."
+        }
       ]
     ],
     "experiments": {
