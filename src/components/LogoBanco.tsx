@@ -8,9 +8,23 @@ import { bancoInfo } from '../lib/bancos'
  * no tiene imagen, se usa la insignia con color de marca + siglas como respaldo.
  */
 const LOGOS: Record<string, number> = {
-  // Ejemplo (descomentar cuando el archivo exista):
-  // '0102': require('../../assets/bancos/0102.png'),
-  // '0105': require('../../assets/bancos/0105.png'),
+  '0102': require('../../assets/bancos/0102.png'), // Banco de Venezuela
+  '0105': require('../../assets/bancos/0105.png'), // Mercantil
+  '0108': require('../../assets/bancos/0108.png'), // BBVA Provincial
+  '0114': require('../../assets/bancos/0114.png'), // Bancaribe
+  '0115': require('../../assets/bancos/0115.png'), // Exterior
+  '0128': require('../../assets/bancos/0128.png'), // Caroní
+  '0134': require('../../assets/bancos/0134.png'), // Banesco
+  '0137': require('../../assets/bancos/0137.png'), // Sofitasa
+  '0138': require('../../assets/bancos/0138.png'), // Banco Plaza
+  '0151': require('../../assets/bancos/0151.png'), // BFC Banco Fondo Común
+  '0156': require('../../assets/bancos/0156.png'), // 100% Banco
+  '0168': require('../../assets/bancos/0168.png'), // Bancrecer
+  '0169': require('../../assets/bancos/0169.png'), // Mi Banco (R4)
+  '0175': require('../../assets/bancos/0175.png'), // Banco Bicentenario (BDT)
+  '0177': require('../../assets/bancos/0177.png'), // BANFANB
+  '0178': require('../../assets/bancos/0178.png'), // N58 Banco Digital
+  '0191': require('../../assets/bancos/0191.png'), // BNC
 }
 
 export function LogoBanco({
