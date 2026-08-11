@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { catalogoApi, geoApi, validacionApi, type GeoOpcion } from '../lib/endpoints'
+import { geoApi, validacionApi, type GeoOpcion } from '../lib/endpoints'
+import { VehiculoCatalogo, type PrefillVehiculo, type SeleccionVehiculo } from './VehiculoCatalogo'
 import { mensajeDeError } from '../lib/api'
 import { ocrCarnet, ocrCedula, type FuenteImagen } from '../lib/ocr'
 import { fechaCorta, isoDia } from '../lib/formato'
@@ -171,10 +172,12 @@ export function PasoCliente({
             serialNiv,
             serialMotor: motorIgual ? serialNiv : (r.serialMotor ?? x.serialMotor),
             color: r.color ?? x.color,
-            marca: r.marca ?? x.marca,
-            modelo: r.modelo ?? x.modelo,
           }
         })
+        // Marca/modelo/año van al picker de catálogo (matchea y autoselecciona).
+        if (r.marca || r.modelo || r.anio) {
+          setOcrPrefill({ marca: r.marca ?? null, modelo: r.modelo ?? null, anio: r.anio ? Number(r.anio) : null })
+        }
         avisar('Carnet leído. Verifica placa y seriales.', 'ok')
       }
     } catch (e) {
@@ -262,14 +265,8 @@ export function PasoCliente({
     return () => clearTimeout(t)
   }, [d.telefono])
 
-  // Catálogo de vehículos (cascada marca → modelo → versión → año).
-  const [marcasCat, setMarcasCat] = useState<{ id: string; nombre: string }[]>([])
-  const [modelosCat, setModelosCat] = useState<{ id: string; nombre: string }[]>([])
-  const [versionesCat, setVersionesCat] = useState<{ id: string; nombre: string }[]>([])
-  const [aniosCat, setAniosCat] = useState<{ id: string; anio: number }[]>([])
-  const [marcaId, setMarcaId] = useState<string | null>(null)
-  const [modeloId, setModeloId] = useState<string | null>(null)
-  const [versionId, setVersionId] = useState<string | null>(null)
+  // Prefill del catálogo de vehículo desde el OCR del carnet (marca/modelo/año).
+  const [ocrPrefill, setOcrPrefill] = useState<PrefillVehiculo | null>(null)
 
   useEffect(() => {
     setCarga('estados', true)
@@ -278,64 +275,19 @@ export function PasoCliente({
       .then((r) => setEstados(aGeo(r)))
       .catch((e) => setError(mensajeDeError(e)))
       .finally(() => setCarga('estados', false))
-    // Marcas del catálogo (para el desplegable de vehículo).
-    setCarga('marcas', true)
-    catalogoApi
-      .marcas()
-      .then((r) => setMarcasCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
-      .catch(() => undefined)
-      .finally(() => setCarga('marcas', false))
   }, [])
 
-  const elegirMarca = useCallback((id: string) => {
-    const nom = marcasCat.find((m) => m.id === id)?.nombre ?? ''
-    setMarcaId(id)
-    setModeloId(null)
-    setVersionId(null)
-    setModelosCat([])
-    setVersionesCat([])
-    setAniosCat([])
-    setD((x) => ({ ...x, marca: nom, modelo: '', version: '', anio: null, catVersionAnioId: null }))
-    setCarga('modelos', true)
-    catalogoApi
-      .modelos(id)
-      .then((r) => setModelosCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
-      .catch(() => undefined)
-      .finally(() => setCarga('modelos', false))
-  }, [marcasCat])
-
-  const elegirModelo = useCallback((id: string) => {
-    const nom = modelosCat.find((m) => m.id === id)?.nombre ?? ''
-    setModeloId(id)
-    setVersionId(null)
-    setVersionesCat([])
-    setAniosCat([])
-    setD((x) => ({ ...x, modelo: nom, version: '', anio: null, catVersionAnioId: null }))
-    setCarga('versiones', true)
-    catalogoApi
-      .versiones(id)
-      .then((r) => setVersionesCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
-      .catch(() => undefined)
-      .finally(() => setCarga('versiones', false))
-  }, [modelosCat])
-
-  const elegirVersion = useCallback((id: string) => {
-    const nom = versionesCat.find((v) => v.id === id)?.nombre ?? ''
-    setVersionId(id)
-    setAniosCat([])
-    setD((x) => ({ ...x, version: nom, anio: null, catVersionAnioId: null }))
-    setCarga('anios', true)
-    catalogoApi
-      .anios(id)
-      .then((r) => setAniosCat(Array.isArray(r) ? r : ((r as any)?.data ?? [])))
-      .catch(() => undefined)
-      .finally(() => setCarga('anios', false))
-  }, [versionesCat])
-
-  const elegirAnio = useCallback((idStr: string) => {
-    const opt = aniosCat.find((a) => String(a.id) === idStr)
-    setD((x) => ({ ...x, anio: opt?.anio ?? null, catVersionAnioId: opt ? Number(opt.id) : null }))
-  }, [aniosCat])
+  // El picker de catálogo devuelve marca/modelo/versión/año + catVersionAnioId.
+  const aplicarSeleccionVehiculo = useCallback((s: SeleccionVehiculo) => {
+    setD((x) => ({
+      ...x,
+      marca: s.marca,
+      modelo: s.modelo,
+      version: s.version,
+      anio: s.anio,
+      catVersionAnioId: s.catVersionAnioId,
+    }))
+  }, [])
 
   const elegirEstado = useCallback((idStr: string) => {
     const id = Number(idStr)
@@ -469,63 +421,7 @@ export function PasoCliente({
       <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Datos del Vehículo</Text>
         <Text style={est.hint}>Selecciona el vehículo del catálogo; los seriales vienen del carnet.</Text>
-        {marcasCat.length > 0 || cargando.marcas ? (
-          <>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Dropdown
-                  etiqueta="Marca"
-                  placeholder="Marca"
-                  opciones={marcasCat.map((m) => ({ valor: m.id, texto: m.nombre }))}
-                  valor={marcaId}
-                  onCambiar={elegirMarca}
-                  cargando={cargando.marcas}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Dropdown
-                  etiqueta="Modelo"
-                  placeholder="Modelo"
-                  opciones={modelosCat.map((m) => ({ valor: m.id, texto: m.nombre }))}
-                  valor={modeloId}
-                  onCambiar={elegirModelo}
-                  cargando={cargando.modelos}
-                  deshabilitado={!marcaId}
-                />
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1.4 }}>
-                <Dropdown
-                  etiqueta="Versión"
-                  placeholder="Versión"
-                  opciones={versionesCat.map((v) => ({ valor: v.id, texto: v.nombre }))}
-                  valor={versionId}
-                  onCambiar={elegirVersion}
-                  cargando={cargando.versiones}
-                  deshabilitado={!modeloId}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Dropdown
-                  etiqueta="Año"
-                  placeholder="Año"
-                  opciones={aniosCat.map((a) => ({ valor: String(a.id), texto: String(a.anio) }))}
-                  valor={d.catVersionAnioId ? String(d.catVersionAnioId) : null}
-                  onCambiar={elegirAnio}
-                  cargando={cargando.anios}
-                  deshabilitado={!versionId}
-                />
-              </View>
-            </View>
-          </>
-        ) : (
-          // Fallback si el catálogo no cargó: captura libre de marca/modelo.
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Campo etiqueta="Marca" placeholder="Marca" value={d.marca} onChangeText={(t) => set('marca', t)} style={{ flex: 1 }} />
-            <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
-          </View>
-        )}
+        <VehiculoCatalogo prefill={ocrPrefill} onSeleccion={aplicarSeleccionVehiculo} />
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
             <Campo
