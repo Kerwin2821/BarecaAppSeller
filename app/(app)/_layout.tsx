@@ -32,7 +32,6 @@ export default function AppLayout() {
           <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
           <Stack.Screen name="chat" options={{ title: 'Chat' }} />
           <Stack.Screen name="ajuste-pagos" options={{ title: 'Ajuste de Pagos' }} />
-          <Stack.Screen name="solicitudes-modificacion" options={{ title: 'Solicitudes de Modificación' }} />
         </Stack>
       </View>
     </DrawerProvider>

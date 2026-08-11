@@ -18,7 +18,6 @@ import {
   IcoPolizas,
   IcoReporte,
   IcoRachas,
-  IcoSolicitudes,
   IcoSoporte,
   IcoVenta,
 } from './Iconos'
@@ -88,14 +87,6 @@ export const MENU: ItemMenu[] = [
     subtitulo: 'Oficinas, distribuidores, kioscos',
     Icono: IcoEquipo,
     visible: puedeGestionarEquipo,
-    grupo: 'Gestión',
-  },
-  {
-    ruta: '/solicitudes-modificacion',
-    titulo: 'Solicitudes de Modificación',
-    subtitulo: 'Cambios sobre pólizas',
-    Icono: IcoSolicitudes,
-    visible: (r) => puedeVerMapa(r),
     grupo: 'Gestión',
   },
   {
