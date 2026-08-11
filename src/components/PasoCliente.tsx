@@ -378,7 +378,29 @@ export function PasoCliente({
     correoChk !== 'checking' &&
     telefonoChk !== 'existe' &&
     telefonoChk !== 'checking' &&
-    (!mostrarVehiculo || (placaChk !== 'existe' && placaChk !== 'checking'))
+    (!mostrarVehiculo ||
+      (placaChk !== 'existe' &&
+        placaChk !== 'checking' &&
+        d.placa.trim().length > 0 &&
+        d.serialNiv.trim().length > 0 &&
+        d.serialMotor.trim().length > 0))
+
+  // Qué falta para habilitar "Continuar" (para avisarle al vendedor).
+  const verificandoCampos =
+    correoChk === 'checking' || telefonoChk === 'checking' || (mostrarVehiculo && placaChk === 'checking')
+  const faltantes: string[] = []
+  if (d.cedula.trim().length < 5) faltantes.push('Cédula')
+  if (d.nombres.trim().length < 2) faltantes.push('Nombres')
+  if (d.apellidos.trim().length < 2) faltantes.push('Apellidos')
+  if (!d.genero) faltantes.push('Género')
+  if (!(d.correo.includes('@') || d.telefono.length >= 7)) faltantes.push('Correo o teléfono')
+  if (!d.estadoId) faltantes.push('Estado')
+  if (correoChk === 'existe') faltantes.push('Correo ya registrado')
+  if (telefonoChk === 'existe') faltantes.push('Teléfono ya registrado')
+  if (mostrarVehiculo && d.placa.trim().length === 0) faltantes.push('Placa')
+  if (mostrarVehiculo && d.serialNiv.trim().length === 0) faltantes.push('Serial de carrocería')
+  if (mostrarVehiculo && d.serialMotor.trim().length === 0) faltantes.push('Serial del motor')
+  if (mostrarVehiculo && placaChk === 'existe') faltantes.push('Placa con póliza vigente')
 
   const fechaNac = d.fechaNacimiento ? new Date(`${d.fechaNacimiento}T12:00:00`) : new Date(2000, 0, 1)
 
@@ -544,6 +566,26 @@ export function PasoCliente({
         <Dropdown etiqueta="Ciudad" placeholder="Selecciona una ciudad" opciones={aOpc(ciudades)} valor={d.ciudadId ? String(d.ciudadId) : null} onCambiar={(v) => set('ciudadId', Number(v))} cargando={cargando.ciu} deshabilitado={!d.estadoId} />
       </Tarjeta>
 
+      {/* Aviso de qué falta para habilitar Continuar */}
+      {!listo ? (
+        <View style={est.faltanBox}>
+          {verificandoCampos && faltantes.length === 0 ? (
+            <Text style={est.faltanTitulo}>Verificando datos…</Text>
+          ) : (
+            <>
+              <Text style={est.faltanTitulo}>Para continuar, completa:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                {faltantes.map((f) => (
+                  <View key={f} style={est.faltanChip}>
+                    <Text style={est.faltanChipTexto}>{f}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      ) : null}
+
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
         <Boton texto="← Atrás" variante="soft" onPress={onAtras} style={{ flex: 1 }} />
         <Boton texto={mostrarVehiculo ? 'Continuar — Conductor' : 'Continuar — Pago'} onPress={() => onContinuar(d)} disabled={!listo} style={{ flex: 1.4 }} />
@@ -601,6 +643,10 @@ const est = StyleSheet.create({
   titulo: { fontSize: 15, fontWeight: '800', color: color.text },
   hint: { fontSize: 12, color: color.text3, lineHeight: 16 },
   label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
+  faltanBox: { backgroundColor: color.warningBg ?? '#FEF6E7', borderRadius: 12, padding: 12, marginTop: 6 },
+  faltanTitulo: { fontSize: 12.5, fontWeight: '800', color: color.amber ?? '#B45309' },
+  faltanChip: { backgroundColor: color.white, borderRadius: 99, paddingVertical: 4, paddingHorizontal: 10, borderWidth: 1, borderColor: color.warning ?? '#F59E0B' },
+  faltanChipTexto: { fontSize: 11.5, fontWeight: '700', color: color.amber ?? '#B45309' },
   chkVerificando: { fontSize: 11.5, color: color.text3, marginTop: 5 },
   chkError: { fontSize: 11.5, color: color.danger, fontWeight: '700', marginTop: 5, lineHeight: 15 },
   chkOk: { fontSize: 11.5, color: color.success, fontWeight: '700', marginTop: 5 },

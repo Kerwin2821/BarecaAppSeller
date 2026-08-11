@@ -449,7 +449,12 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   // Totales para el paso de pago (base × tasa BCV + APOV, como la web).
   const sdActual = construirSaleData()
   const totalesActual = calcularTotales(sdActual, pago.rates)
-  const totalPagarMostrar = pago.calculatedTotal ?? totalesActual.totalFull
+  const totalSinDescuento = pago.calculatedTotal ?? totalesActual.totalFull
+  // Descuento manual: se resta del total EN VIVO y se valida contra el máximo (como la web).
+  const descuentoNum = descuentoOn ? Math.max(0, Number(descuentoMonto) || 0) : 0
+  const descuentoExcede = descuentoNum > pago.maxDiscount
+  const descuentoAplicado = Math.min(descuentoNum, pago.maxDiscount)
+  const totalPagarMostrar = Math.max(0, totalSinDescuento - descuentoAplicado)
   // Posición en el sub-stepper del pago según el estado y el método.
   const pagoStepIdx = (() => {
     const st = pago.otpState
@@ -963,15 +968,28 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                         </Text>
                       </Pressable>
                       {descuentoOn ? (
-                        <Campo
-                          etiqueta="Monto del Descuento (Bs.)"
-                          placeholder="0.00"
-                          keyboardType="decimal-pad"
-                          value={descuentoMonto}
-                          onChangeText={(t) => setDescuentoMonto(t.replace(/[^0-9.]/g, ''))}
-                        />
+                        <>
+                          <Campo
+                            etiqueta="Monto del Descuento (Bs.)"
+                            placeholder="0.00"
+                            keyboardType="decimal-pad"
+                            value={descuentoMonto}
+                            error={descuentoExcede}
+                            onChangeText={(t) => setDescuentoMonto(t.replace(/[^0-9.]/g, ''))}
+                          />
+                          {descuentoExcede ? (
+                            <Text style={{ fontSize: 11.5, color: color.danger, fontWeight: '700' }}>
+                              El descuento excede el máximo permitido ({moneda(pago.maxDiscount, 'Bs.')}).
+                            </Text>
+                          ) : (
+                            <Text style={est.hint}>Se descuenta de tu comisión asignada.</Text>
+                          )}
+                        </>
                       ) : null}
                     </>
+                  ) : null}
+                  {descuentoAplicado > 0 ? (
+                    <FilaResumen k="🏷️ Descuento Manual" v={`- ${moneda(descuentoAplicado, 'Bs.')}`} />
                   ) : null}
                   <View style={est.totalDivider} />
                   <View style={est.apovFila}>
@@ -1071,7 +1089,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     variante="exito"
                     onPress={enviarPago}
                     cargando={pago.otpState === 'sending'}
-                    disabled={pagoDatosInvalidos || pago.otpState === 'sending' || pago.ratesLoadError}
+                    disabled={pagoDatosInvalidos || descuentoExcede || pago.otpState === 'sending' || pago.ratesLoadError}
                     style={{ flex: 1.7 }}
                   />
                 </View>
