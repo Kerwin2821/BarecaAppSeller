@@ -82,6 +82,8 @@ export interface SaleDataVenta {
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const soloDigitos = (s: string) => (s || '').replace(/[^0-9]/g, '')
+/** Documento SIN guion, como lo espera el backend (igual que el OCR): "V18815250". */
+const docSinGuion = (tipoDoc: string, cedula: string) => `${(tipoDoc || 'V').toUpperCase()}${soloDigitos(cedula)}`
 
 /** Rellena a 8 dígitos las cédulas para Banco Plaza (mantiene prefijo). */
 function padCedula(cedula: string): string {
@@ -346,7 +348,7 @@ export function useEmisionPago() {
   const stagear = useCallback(async (sd: SaleDataVenta) => {
     if (orden.current.clienteId && orden.current.registroVehiculoId) return
     const c = sd.cliente
-    const doc = `${c.tipoDoc}-${soloDigitos(c.cedula)}`
+    const doc = docSinGuion(c.tipoDoc, c.cedula)
     // 1. Cliente: buscar por documento, si no existe crear.
     let clienteId = ''
     try {
@@ -367,6 +369,8 @@ export function useEmisionPago() {
         nacionalidad: c.tipoDoc === 'E' ? 'EXTRANJERO' : 'VENEZOLANO',
         fechaNacimiento: c.fechaNacimiento ?? '',
         gender: c.genero === 'F' ? 'FEMENINO' : 'MASCULINO',
+      }).catch((e) => {
+        throw new Error(`al registrar el cliente — ${mensajeDeError(e)}`)
       })
       clienteId = r?.data?.id ?? ''
       // Contacto (best-effort, no bloquea la venta).
@@ -402,6 +406,8 @@ export function useEmisionPago() {
         cliente: clienteId,
         catVersionAnioId: c.catVersionAnioId ? String(c.catVersionAnioId) : null,
         anioNum: c.anio ?? null,
+      }).catch((e) => {
+        throw new Error(`al registrar el vehículo — ${mensajeDeError(e)}`)
       })
       orden.current.registroVehiculoId = r?.data?.id ?? ''
     }
@@ -414,7 +420,7 @@ export function useEmisionPago() {
     const cond = sd.conductorTipo === 'otro' && sd.conductorDatos ? sd.conductorDatos : null
     const nombreConductor = (cond ? cond.nombres : c.nombres).toUpperCase()
     const apellidoConductor = (cond ? cond.apellidos : c.apellidos).toUpperCase()
-    const cedulaConductor = (cond ? `${cond.tipoDoc}-${soloDigitos(cond.cedula)}` : `${c.tipoDoc}-${soloDigitos(c.cedula)}`).toUpperCase()
+    const cedulaConductor = (cond ? docSinGuion(cond.tipoDoc, cond.cedula) : docSinGuion(c.tipoDoc, c.cedula)).toUpperCase()
     return {
       tipoPersona: 'NATURAL',
       barecaId: sd.user?.barecaId ?? '',
@@ -437,7 +443,7 @@ export function useEmisionPago() {
       tipoPersonaConductor: 'NATURAL',
       nombreTitular: c.nombres.toUpperCase(),
       apellidoTitular: c.apellidos.toUpperCase(),
-      cedulaTitular: `${c.tipoDoc}-${soloDigitos(c.cedula)}`.toUpperCase(),
+      cedulaTitular: docSinGuion(c.tipoDoc, c.cedula),
       tipoPersonaTitular: 'NATURAL',
       productoId: sd.productoId ?? '',
       comisionPrepagada: !!sd.user?.comisionPrepagada,
@@ -513,13 +519,13 @@ export function useEmisionPago() {
         catVersionAnioId: c.catVersionAnioId,
         ownerNombre: c.nombres,
         ownerApellido: c.apellidos,
-        ownerCedula: `${c.tipoDoc}-${soloDigitos(c.cedula)}`,
+        ownerCedula: docSinGuion(c.tipoDoc, c.cedula),
       },
       driverData: {
         frequentDriverType: sd.conductorTipo,
         otherDriverNombre: sd.conductorDatos?.nombres,
         otherDriverApellido: sd.conductorDatos?.apellidos,
-        otherDriverCedula: sd.conductorDatos ? `${sd.conductorDatos.tipoDoc}-${soloDigitos(sd.conductorDatos.cedula)}` : undefined,
+        otherDriverCedula: sd.conductorDatos ? docSinGuion(sd.conductorDatos.tipoDoc, sd.conductorDatos.cedula) : undefined,
         includeApov: sd.apovOn,
         apovCalculation: sd.apov,
       },
@@ -529,7 +535,7 @@ export function useEmisionPago() {
       insuredData: {
         firstName: c.nombres,
         lastName: c.apellidos,
-        idNumber: `${c.tipoDoc}-${soloDigitos(c.cedula)}`,
+        idNumber: docSinGuion(c.tipoDoc, c.cedula),
         razonSocial: null,
       },
       beneficiarios: [],
@@ -661,12 +667,16 @@ export function useEmisionPago() {
 
         // 4. Crear la orden (según tipo y método).
         let resp: any
-        if (sd.tipo === 'funerario') {
-          const body = construirOrdenFuneraria(sd, opts.bank, opts.gateway, totalPagar, discountPct)
-          resp = opts.metodo === 'PAGO_MOVIL' ? await funerarioApi.crearOrdenPagoMovil(body) : await funerarioApi.crearOrden(body)
-        } else {
-          const body = construirOrdenRcv(sd, opts.bank, opts.gateway, totalPagar, discountPct)
-          resp = opts.metodo === 'PAGO_MOVIL' ? await paymentApi.crearOrdenPagoMovil(body) : await paymentApi.crearOrden(body)
+        try {
+          if (sd.tipo === 'funerario') {
+            const body = construirOrdenFuneraria(sd, opts.bank, opts.gateway, totalPagar, discountPct)
+            resp = opts.metodo === 'PAGO_MOVIL' ? await funerarioApi.crearOrdenPagoMovil(body) : await funerarioApi.crearOrden(body)
+          } else {
+            const body = construirOrdenRcv(sd, opts.bank, opts.gateway, totalPagar, discountPct)
+            resp = opts.metodo === 'PAGO_MOVIL' ? await paymentApi.crearOrdenPagoMovil(body) : await paymentApi.crearOrden(body)
+          }
+        } catch (e) {
+          throw new Error(`al crear la orden — ${mensajeDeError(e)}`)
         }
         const ids = extraerNumeroOrden(resp)
         orden.current.numeroOrden = ids.numeroOrden
@@ -813,7 +823,7 @@ function construirOrdenFuneraria(sd: SaleDataVenta, bank: DetallesBanco, gateway
       {
         nombres: c.nombres.toUpperCase(),
         apellido: c.apellidos.toUpperCase(),
-        numeroDocumento: `${c.tipoDoc}-${(c.cedula || '').replace(/[^0-9]/g, '')}`,
+        numeroDocumento: docSinGuion(c.tipoDoc, c.cedula),
         sexo: c.genero === 'F' ? 'FEMENINO' : 'MASCULINO',
         nacionalidad: c.tipoDoc === 'E' ? 'EXTRANJERO' : 'VENEZOLANO',
         fechaNacimiento: c.fechaNacimiento ?? '',

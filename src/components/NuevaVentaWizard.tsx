@@ -223,7 +223,8 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     (): DetallesBanco => ({
       banco: bancoPago,
       telefonoAsociado: telefonoPago,
-      cedulaTitular: `${tipoDocTitular}-${cedulaTitular}`,
+      // Cédula del titular SIN guion (igual que la web: tipoDocumento + numeroDocumento).
+      cedulaTitular: `${tipoDocTitular}${cedulaTitular}`,
       telefonoPago,
     }),
     [bancoPago, telefonoPago, tipoDocTitular, cedulaTitular],

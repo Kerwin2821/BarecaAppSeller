@@ -26,10 +26,12 @@ export const PORTAL_ID = process.env.EXPO_PUBLIC_PORTAL_ID ?? 'VENDEDORES'
 
 export class ApiException extends Error {
   readonly status: number
-  constructor(status: number, mensaje: string) {
+  readonly cuerpo?: unknown
+  constructor(status: number, mensaje: string, cuerpo?: unknown) {
     super(mensaje)
     this.name = 'ApiException'
     this.status = status
+    this.cuerpo = cuerpo
   }
 }
 
@@ -153,8 +155,16 @@ export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promi
   }
 
   if (!res.ok) {
-    const e = datos as { message?: string; error?: string } | null
-    throw new ApiException(res.status, e?.message ?? e?.error ?? `El servidor respondió ${res.status}.`)
+    const e = datos as any
+    // El backend (JHipster) devuelve el motivo en message / error / detail / title
+    // o en fieldErrors[]; leemos todos para mostrar la causa real y no un genérico.
+    const fieldErrs =
+      Array.isArray(e?.fieldErrors) && e.fieldErrors.length
+        ? e.fieldErrors.map((f: any) => `${f.field ?? f.objectName ?? 'campo'}: ${f.message ?? f.code ?? 'inválido'}`).join(', ')
+        : null
+    const msg =
+      e?.message ?? e?.error ?? e?.detail ?? e?.title ?? fieldErrs ?? `El servidor respondió ${res.status}.`
+    throw new ApiException(res.status, msg, datos)
   }
 
   return datos as T
