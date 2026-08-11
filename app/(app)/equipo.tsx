@@ -370,6 +370,11 @@ function ModalCrearEntidad({
     setEnviando(true)
     setError(null)
     try {
+      // Administrador (empleado que inicia sesión) derivado de la entidad, igual
+      // que el "copiar datos" de la web: el BFF exige adminNombres/adminApellidos.
+      const partes = nombre.trim().split(/\s+/).filter(Boolean)
+      const adminNombres = partes[0] || nombre.trim()
+      const adminApellidos = partes.length > 1 ? partes.slice(1).join(' ') : (partes[0] || nombre.trim())
       const formData = {
         nombre: nombre.trim(),
         numeroDocumento: numeroDocumento.trim(),
@@ -377,6 +382,11 @@ function ModalCrearEntidad({
         telefono: telefono.trim(),
         role: rol,
         comisionPrepagada: false,
+        adminNombres,
+        adminApellidos,
+        adminNumeroDocumento: numeroDocumento.trim(),
+        adminEmail: correo.trim(),
+        adminTelefono: telefono.trim(),
         commissions: activos.map((it) => ({
           productId: it.productId,
           productName: it.productName,
