@@ -63,23 +63,21 @@ const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionD
   xs.map((x) => ({ valor: id(x), texto: txt(x) }))
 
 /** Logo de la aseguradora por nombre (igual que el quote-step del portal). */
-const LOGOS_ASEG: { re: RegExp; src: number; blanco?: boolean }[] = [
-  // El de Caroní es blanco: sobre fondo claro se pinta oscuro con tintColor.
-  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png'), blanco: true },
+const LOGOS_ASEG: { re: RegExp; src: number }[] = [
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
 ]
 
-/** Muestra el logo de la aseguradora. `fondoOscuro`=true cuando la tarjeta va en color. */
-function LogoAseg({ nombre, fondoOscuro, alto = 28 }: { nombre?: string; fondoOscuro?: boolean; alto?: number }) {
+/** Muestra el logo (a color) de la aseguradora sobre un fondo blanco para que se
+ *  vea igual en tarjetas claras y en las seleccionadas (fondo azul). */
+function LogoAseg({ nombre, alto = 28 }: { nombre?: string; fondoOscuro?: boolean; alto?: number }) {
   const logo = LOGOS_ASEG.find((l) => l.re.test(nombre || ''))
   if (!logo) return null
   return (
-    <Image
-      source={logo.src}
-      resizeMode="contain"
-      style={[{ height: alto, width: 118 }, logo.blanco && !fondoOscuro ? { tintColor: color.text } : null]}
-    />
+    <View style={{ backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'center' }}>
+      <Image source={logo.src} resizeMode="contain" style={{ height: alto, width: 132 }} />
+    </View>
   )
 }
 
