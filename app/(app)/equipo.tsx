@@ -266,6 +266,16 @@ export default function Equipo() {
         detalle="Tu red comercial multinivel (Corporativo → Oficina Regional → Distribuidor → Kiosco)"
       />
 
+      {__DEV__ ? (
+        <Text selectable style={est.dbg}>
+          {`🐞 rol=${user?.role} · entId=${String(
+            user?.distributorEntityId ?? user?.officeEntityId ?? user?.barecaEntityId,
+          )} · uuid=${(user ? actorUuid(user) : null)?.slice(0, 8) ?? '-'} · kioscos=${
+            datos?.kiosks?.length ?? 'n/a'
+          } · distr=${datos?.distributors?.length ?? 'n/a'}`}
+        </Text>
+      ) : null}
+
       {nuevoRol ? (
         <View style={{ marginBottom: 12 }}>
           <Boton texto={`+ Añadir ${etiquetaRol(nuevoRol)} a mi Equipo`} onPress={() => setCrearAbierto(true)} />
@@ -665,6 +675,7 @@ const est = StyleSheet.create({
   fecha: { fontSize: 11, color: color.text4, marginTop: 4 },
   codigo: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
   sincro: { fontSize: 10, color: color.warning, fontWeight: '700' },
+  dbg: { fontSize: 10, color: color.text2, fontFamily: fuenteMono, backgroundColor: '#FEF3C7', padding: 6, borderRadius: 6, marginBottom: 10 },
   comTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text, marginTop: 18 },
   comAyuda: { fontSize: 11.5, color: color.text3, marginTop: 4, lineHeight: 16 },
   comFila: {
