@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { funerarioApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
 import { ApiException, mensajeDeError } from '../lib/api'
@@ -61,6 +61,27 @@ const RIESGOS = [
 
 const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionDrop[] =>
   xs.map((x) => ({ valor: id(x), texto: txt(x) }))
+
+/** Logo de la aseguradora por nombre (igual que el quote-step del portal). */
+const LOGOS_ASEG: { re: RegExp; src: number; blanco?: boolean }[] = [
+  // El de Caroní es blanco: sobre fondo claro se pinta oscuro con tintColor.
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png'), blanco: true },
+  { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
+  { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
+]
+
+/** Muestra el logo de la aseguradora. `fondoOscuro`=true cuando la tarjeta va en color. */
+function LogoAseg({ nombre, fondoOscuro, alto = 28 }: { nombre?: string; fondoOscuro?: boolean; alto?: number }) {
+  const logo = LOGOS_ASEG.find((l) => l.re.test(nombre || ''))
+  if (!logo) return null
+  return (
+    <Image
+      source={logo.src}
+      resizeMode="contain"
+      style={[{ height: alto, width: 118 }, logo.blanco && !fondoOscuro ? { tintColor: color.text } : null]}
+    />
+  )
+}
 
 /** Monto del plan en Bs (numérico), 0 si no se puede resolver. */
 function bsDePlan(plan: any): number {
@@ -448,7 +469,8 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       return (
                         <Pressable key={p.productoId} onPress={() => setProductoId(p.productoId)}>
                           <Tarjeta style={[est.aseg, sel && est.asegSel]}>
-                            <Text style={[est.asegTexto, sel && { color: '#fff' }]}>{p.nombre}</Text>
+                            <LogoAseg nombre={p.nombre} fondoOscuro={sel} alto={30} />
+                            <Text style={[est.asegTexto, { marginTop: 8 }, sel && { color: '#fff' }]}>{p.nombre}</Text>
                           </Tarjeta>
                         </Pressable>
                       )
@@ -510,7 +532,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                         <Text style={est.seccion}>4. Selecciona el plan ideal para tu cliente</Text>
                         <View style={{ gap: 12 }}>
                           {planes.map((pl, i) => (
-                            <PlanCard key={i} plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} />
+                            <PlanCard key={i} plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} providerName={producto?.nombre} />
                           ))}
                         </View>
 
@@ -1136,17 +1158,30 @@ function PagoExito({
 }
 
 /** Tarjeta de plan RCV (defensiva sobre la forma exacta del backend). */
-function PlanCard({ plan, activo, onPress }: { plan: any; activo: boolean; onPress: () => void }) {
+function PlanCard({ plan, activo, onPress, providerName }: { plan: any; activo: boolean; onPress: () => void; providerName?: string }) {
   const titulo = plan?.grupo?.descripcion ?? plan?.descripcion ?? plan?._planLabel ?? 'Plan RCV'
   const tcr = plan?.primaAnualTCR ?? plan?.finalPrice ?? plan?.prima ?? null
   const coberturas: any[] = Array.isArray(plan?.coberturas) ? plan.coberturas : []
+  // Servicios del plan (grúa/asistencia) — el backend los trae configurados por proveedor/grupo.
+  const servicios: any[] = Array.isArray(plan?.servicios) ? plan.servicios : []
   return (
     <Pressable onPress={onPress}>
       <Tarjeta style={[{ padding: 16 }, activo && { borderColor: color.primary, borderWidth: 2 }]}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={est.planTitulo}>{titulo}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <LogoAseg nombre={providerName} alto={22} />
           {activo ? <Pildora color={color.primary} texto="Seleccionado" /> : null}
         </View>
+        <Text style={est.planTitulo}>{titulo}</Text>
+        {servicios.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+            {servicios.map((s, i) => {
+              const nombre = String(s?.nombre ?? s?.descripcion ?? 'Servicio')
+              const grua = /gr[uú]a/i.test(nombre)
+              const asist = /asistencia/i.test(nombre)
+              return <Pildora key={i} color={color.success} texto={`${grua ? '🚚 ' : asist ? '🛠️ ' : '✔ '}${nombre}`} />
+            })}
+          </View>
+        ) : null}
         {coberturas.slice(0, 4).map((c, i) => (
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
             <Text style={est.covNombre}>✔ {c?.nombre ?? c?.cobertura ?? 'Cobertura'}</Text>
