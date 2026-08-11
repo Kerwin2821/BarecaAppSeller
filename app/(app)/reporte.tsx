@@ -321,7 +321,7 @@ export default function Reporte() {
             <Text style={est.seccion}>Mejores {NIVEL_PLURAL[lvl]}</Text>
             <View style={{ gap: 10, marginTop: 8 }}>
               {lista.slice(0, 5).map((x, i) => (
-                <View key={x.id ?? i}>
+                <View key={`${i}-${x.id ?? ''}`}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Text style={est.rankNombre} numberOfLines={1}>
                       {x.nombre || '—'} <Text style={est.rankCant}>({x.cantidad ?? 0})</Text>
@@ -437,7 +437,7 @@ export default function Reporte() {
       ) : (
         <View style={{ gap: 8 }}>
           {filas.map((r, i) => (
-            <PolizaFila key={r.numeroPoliza ?? i} r={r} />
+            <PolizaFila key={`${i}-${r.numeroPoliza ?? 'p'}-${r.proveedor ?? ''}`} r={r} />
           ))}
           {total > TAM_PAGINA ? (
             <View style={est.pager}>
