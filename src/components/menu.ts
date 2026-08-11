@@ -37,7 +37,7 @@ export const MENU: ItemMenu[] = [
   {
     ruta: '/nueva-venta',
     titulo: 'Nueva Venta',
-    subtitulo: 'Cotizar y emitir RCV / Casco',
+    subtitulo: 'Cotizar y emitir RCV y Funerario',
     Icono: IcoVenta,
     visible: puedeVender,
     grupo: 'Operación',
