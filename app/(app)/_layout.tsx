@@ -28,7 +28,6 @@ export default function AppLayout() {
           <Stack.Screen name="equipo" options={{ title: 'Gestión de Equipo' }} />
           <Stack.Screen name="perfil" options={{ title: 'Mi Perfil' }} />
           <Stack.Screen name="nueva-venta" options={{ title: 'Nueva Venta' }} />
-          <Stack.Screen name="nueva-venta-express" options={{ title: 'Venta Rápida RCV' }} />
           <Stack.Screen name="mapa-conexiones" options={{ title: 'Mapa de Conexiones' }} />
           <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
           <Stack.Screen name="chat" options={{ title: 'Chat' }} />
