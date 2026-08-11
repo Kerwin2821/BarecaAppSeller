@@ -71,17 +71,84 @@ function aGeo(r: any): GeoOpcion[] {
   return (arr as any[]).filter((x) => x && x.id != null && x.nombre)
 }
 
-/** Normaliza nombres de lugares para comparar (sin tildes/signos, mayúsculas). */
+/** Normaliza nombres de lugares para comparar (sin tildes/prefijos/signos). */
 const normLugar = (s?: string | null) =>
-  (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '')
+  (s || '')
+    .toString()
+    .replace(/\b(municipio|parroquia|ciudad de|estado)\b/gi, ' ')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9]/g, '')
 
-/** Mejor coincidencia geo por nombre (exacta → contiene). */
+/** Mejor coincidencia geo por nombre (exacta → contiene, sin falsos cortos). */
 function matchGeo(list: GeoOpcion[], texto?: string | null): GeoOpcion | null {
   const t = normLugar(texto)
   if (!t || !list.length) return null
   const exact = list.find((o) => normLugar(o.nombre) === t)
   if (exact) return exact
-  return list.find((o) => normLugar(o.nombre).includes(t) || t.includes(normLugar(o.nombre))) ?? null
+  return (
+    list.find((o) => {
+      const n = normLugar(o.nombre)
+      if (n.length < 4 || t.length < 4) return false
+      return n.includes(t) || t.includes(n)
+    }) ?? null
+  )
+}
+
+/** Primera coincidencia probando varios nombres candidatos (municipio/ciudad). */
+function primerMatch(list: GeoOpcion[], candidatos: (string | null | undefined)[]): GeoOpcion | null {
+  for (const c of candidatos) {
+    const m = matchGeo(list, c)
+    if (m) return m
+  }
+  return null
+}
+
+/**
+ * Reverse geocoding robusto para Venezuela: Nominatim (OpenStreetMap) primero —
+ * da bien la jerarquía estado/municipio/ciudad — y expo-location como respaldo.
+ * Devuelve el estado + candidatos de municipio y ciudad para emparejar al catálogo.
+ */
+async function reverseGeo(
+  lat: number,
+  lon: number,
+): Promise<{ estado: string; municipioCands: string[]; ciudadCands: string[] }> {
+  const limpiar = (arr: (string | null | undefined)[]) =>
+    arr.filter((x): x is string => !!x && x.trim().length > 0)
+  // 1) Nominatim (OpenStreetMap)
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1&accept-language=es`
+    const r = await fetch(url, { headers: { 'User-Agent': 'BarecaVendedores/1.0 (app)', 'Accept-Language': 'es' } })
+    if (r.ok) {
+      const j: any = await r.json()
+      const a = j?.address ?? {}
+      const estado = a.state ?? a.region ?? ''
+      if (estado) {
+        return {
+          estado,
+          municipioCands: limpiar([a.municipality, a.county, a.city_district, a.town, a.city]),
+          ciudadCands: limpiar([a.city, a.town, a.village, a.suburb, a.neighbourhood, a.city_district, a.municipality]),
+        }
+      }
+    }
+  } catch {
+    /* sin red o bloqueado → respaldo local */
+  }
+  // 2) expo-location (respaldo)
+  try {
+    const g = (await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon }))?.[0]
+    if (g) {
+      return {
+        estado: g.region ?? '',
+        municipioCands: limpiar([g.subregion, g.district, g.city]),
+        ciudadCands: limpiar([g.city, g.district, g.name, g.subregion]),
+      }
+    }
+  } catch {
+    /* nada */
+  }
+  return { estado: '', municipioCands: [], ciudadCands: [] }
 }
 
 /**
@@ -331,11 +398,7 @@ export function PasoCliente({
       }
       if (perm.status !== 'granted') return // sin permiso → se elige a mano, sin molestar
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-      const geo = (await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }))?.[0]
-      if (!geo) return
-      const nEstado = geo.region ?? ''
-      const nMunicipio = geo.subregion ?? geo.district ?? ''
-      const nCiudad = geo.city ?? geo.district ?? ''
+      const { estado: nEstado, municipioCands, ciudadCands } = await reverseGeo(pos.coords.latitude, pos.coords.longitude)
       const est = matchGeo(estados, nEstado)
       if (!est) return
       set('estadoId', est.id)
@@ -347,8 +410,9 @@ export function PasoCliente({
       ])
       setMunicipios(muns)
       setCiudades(ciuds)
-      const mun = matchGeo(muns, nMunicipio) ?? matchGeo(muns, nCiudad)
-      const ciu = matchGeo(ciuds, nCiudad) ?? matchGeo(ciuds, nMunicipio)
+      // Prueba municipio con los candidatos de municipio y, si falla, con los de ciudad (y viceversa).
+      const mun = primerMatch(muns, [...municipioCands, ...ciudadCands])
+      const ciu = primerMatch(ciuds, [...ciudadCands, ...municipioCands])
       if (mun) set('municipioId', mun.id)
       if (ciu) set('ciudadId', ciu.id)
     } catch {
