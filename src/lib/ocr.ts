@@ -101,15 +101,18 @@ const cedulaIncompleta = (d: any) => !d || !(d.nombre ?? d.nombres) || !(d.cedul
 
 function mapearCarnet(d: any): DatosCarnetOCR {
   const serialNiv = d.serialNiv ?? d.serial_niv ?? d.niv ?? d.serialCarroceria
+  // Gemini devuelve el año como "año" (con ñ) y 0 cuando no lo detecta.
+  const anioRaw = d['año'] ?? d.anio ?? d.ano ?? d.year ?? d.anno
+  const anioNum = Number(anioRaw)
   return {
     placa: d.placa,
     serialNiv,
     serialCarroceria: d.serialCarroceria ?? serialNiv,
     serialMotor: d.serialMotor ?? d.serial_motor,
     color: d.color,
-    marca: d.marca,
-    modelo: d.modelo,
-    anio: d.anio ? String(d.anio) : undefined,
+    marca: d.marca ?? d.marca_vehiculo,
+    modelo: d.modelo ?? d.modelo_vehiculo,
+    anio: Number.isFinite(anioNum) && anioNum > 1900 ? String(anioNum) : undefined,
   }
 }
 const carnetIncompleto = (d: any) => !d || !d.placa || !d.marca || !d.modelo
