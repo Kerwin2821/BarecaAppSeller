@@ -192,6 +192,9 @@ export const comisionApi = {
     bff<any>('/users/comision-transaccions/v1/transacciones/subarbol', { params }),
   ordenesPago: (params: Record<string, string | number | undefined> = {}) =>
     bff<any>('/users/pago-comision-ordens/v1/ordenes', { params }),
+  /** Genera una orden de pago (solicitud de retiro de comisión). POST con params, body nulo. */
+  generarOrden: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/pago-comision-ordens/v1/ordenes', { method: 'POST', params }),
 }
 
 // ── RCV: cotización (clase → grupo → tarifa), público ───────

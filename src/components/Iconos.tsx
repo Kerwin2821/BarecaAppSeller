@@ -13,6 +13,23 @@ export function IcoVenta({ color, size = 22 }: P) {
     </Svg>
   )
 }
+export function IcoHome({ color, size = 22 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 10.5 12 3l9 7.5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  )
+}
+export function IcoWallet({ color, size = 22 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x={3} y={6} width={18} height={13} rx={2.5} stroke={color} strokeWidth={sw} />
+      <Path d="M3 9h13a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H3" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <Circle cx={16.5} cy={12.5} r={1.1} fill={color} />
+    </Svg>
+  )
+}
 export function IcoExpress({ color, size = 22 }: P) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

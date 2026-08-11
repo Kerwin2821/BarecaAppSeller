@@ -12,6 +12,7 @@ import {
   IcoChat,
   IcoComisiones,
   IcoEquipo,
+  IcoHome,
   IcoMapa,
   IcoPerfil,
   IcoPolizas,
@@ -32,6 +33,14 @@ export interface ItemMenu {
 
 /** Menú del portal de vendedores, con las mismas reglas de rol del sidebar web. */
 export const MENU: ItemMenu[] = [
+  {
+    ruta: '/',
+    titulo: 'Inicio',
+    subtitulo: 'Wallet y resumen',
+    Icono: IcoHome,
+    visible: () => true,
+    grupo: 'Operación',
+  },
   {
     ruta: '/nueva-venta',
     titulo: 'Nueva Venta',

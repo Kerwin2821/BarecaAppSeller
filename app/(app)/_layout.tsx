@@ -2,6 +2,7 @@ import { View } from 'react-native'
 import { Stack } from 'expo-router'
 import { DrawerProvider } from '@/components/Drawer'
 import { AppHeader } from '@/components/AppHeader'
+import { BarraInferior } from '@/components/BarraInferior'
 import { color } from '@/lib/tema'
 
 /**
@@ -32,6 +33,7 @@ export default function AppLayout() {
           <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
           <Stack.Screen name="chat" options={{ title: 'Chat' }} />
         </Stack>
+        <BarraInferior />
       </View>
     </DrawerProvider>
   )

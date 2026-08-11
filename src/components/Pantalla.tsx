@@ -22,7 +22,7 @@ export function Pantalla({
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: color.bgApp }}
-      contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 28 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 88 }}
       refreshControl={
         onRefresh ? <RefreshControl refreshing={refrescando} onRefresh={onRefresh} tintColor={color.primary} /> : undefined
       }

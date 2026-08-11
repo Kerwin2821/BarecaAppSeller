@@ -29,20 +29,9 @@ export function puedeVerPolizas(role: UserRole | null | undefined): boolean {
   return !!role && ['BARECA', 'OFICINA_REGIONAL', 'DISTRIBUIDOR', 'KIOSCO'].includes(role)
 }
 
-/** Ruta inicial tras el login, según el rol (getInitialRouteForRole del portal). */
-export function rutaInicialPorRol(role: UserRole | null | undefined): string {
-  switch (role) {
-    case 'BARECA':
-    case 'OFICINA_REGIONAL':
-      return '/equipo'
-    case 'DISTRIBUIDOR':
-    case 'EMPLEADO':
-      return '/nueva-venta'
-    case 'KIOSCO':
-      return '/nueva-venta'
-    default:
-      return '/polizas'
-  }
+/** Ruta inicial tras el login: el home tipo wallet para todos los roles. */
+export function rutaInicialPorRol(_role: UserRole | null | undefined): string {
+  return '/'
 }
 
 export function etiquetaRol(role: UserRole | null | undefined): string {
