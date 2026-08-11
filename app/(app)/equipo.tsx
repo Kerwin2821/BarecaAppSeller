@@ -103,6 +103,9 @@ export default function Equipo() {
   const [crearAbierto, setCrearAbierto] = useState(false)
   const [busca, setBusca] = useState('')
   const [exportando, setExportando] = useState<'csv' | 'pdf' | null>(null)
+  // Entidades recién creadas en esta sesión, para mostrarlas de inmediato aunque el
+  // backend tarde en reflejarlas (o no las vincule) en la jerarquía.
+  const [extras, setExtras] = useState<{ tab: Tab; e: any }[]>([])
   const nuevoRol = rolCreable(user?.role)
 
   const cargar = useCallback(async () => {
@@ -136,13 +139,29 @@ export default function Equipo() {
     user?.kioskEntityId,
   ])
 
-  const lista: any[] = useMemo(() => {
-    if (!datos) return []
-    if (tab === 'offices') return datos.offices ?? []
-    if (tab === 'distributors') return datos.distributors ?? []
-    if (tab === 'kiosks') return datos.kiosks ?? []
-    return datos.employees ?? []
-  }, [datos, tab])
+  const baseFor = useCallback(
+    (t: Tab): any[] => {
+      if (!datos) return []
+      if (t === 'offices') return datos.offices ?? []
+      if (t === 'distributors') return datos.distributors ?? []
+      if (t === 'kiosks') return datos.kiosks ?? []
+      return datos.employees ?? []
+    },
+    [datos],
+  )
+  // Mezcla la lista del backend con las entidades locales recién creadas (dedupe por documento).
+  const mergedFor = useCallback(
+    (t: Tab): any[] => {
+      const base = baseFor(t)
+      const docs = new Set(base.map((x: any) => String(x?.numeroDocumento ?? '').toLowerCase()).filter(Boolean))
+      const locales = extras
+        .filter((x) => x.tab === t && !docs.has(String(x.e?.numeroDocumento ?? '').toLowerCase()))
+        .map((x) => x.e)
+      return [...locales, ...base]
+    },
+    [baseFor, extras],
+  )
+  const lista: any[] = useMemo(() => mergedFor(tab), [mergedFor, tab])
 
   // Búsqueda por Nombre o Documento (client-side, como la web).
   const filtrados = useMemo(() => {
@@ -155,13 +174,7 @@ export default function Equipo() {
     })
   }, [lista, busca])
 
-  const cuenta = (t: Tab): number => {
-    if (!datos) return 0
-    if (t === 'offices') return datos.offices?.length ?? 0
-    if (t === 'distributors') return datos.distributors?.length ?? 0
-    if (t === 'kiosks') return datos.kiosks?.length ?? 0
-    return datos.employees?.length ?? 0
-  }
+  const cuenta = (t: Tab): number => mergedFor(t).length
   const tabLabel = tabs.find((t) => t.id === tab)?.label ?? ''
 
   const exportar = async (tipo: 'csv' | 'pdf') => {
@@ -280,13 +293,15 @@ export default function Equipo() {
           rol={nuevoRol}
           user={user}
           onCerrar={() => setCrearAbierto(false)}
-          onListo={() => {
+          onListo={(nuevo) => {
             setCrearAbierto(false)
             setBusca('')
-            if (nuevoRol) setTab(TAB_DE_ROL[nuevoRol] ?? tab)
+            const t = nuevoRol ? TAB_DE_ROL[nuevoRol] : undefined
+            if (t) setTab(t)
+            // Muestra el recién creado de inmediato (el backend puede tardar en reflejarlo).
+            if (nuevo && t) setExtras((prev) => [{ tab: t, e: nuevo }, ...prev])
             recargar()
-            // El alta hace varios pasos en el backend; reintenta por si la lista
-            // aún no lo refleja (consistencia eventual).
+            // El alta hace varios pasos en el backend; reintenta por si la lista aún no lo refleja.
             setTimeout(() => recargar(), 1500)
             setTimeout(() => recargar(), 4000)
           }}
@@ -312,7 +327,7 @@ function ModalCrearEntidad({
   rol: UserRole
   user: CurrentUser | null
   onCerrar: () => void
-  onListo: () => void
+  onListo: (nuevo?: any) => void
 }) {
   const { avisar } = useToast()
   const [nombre, setNombre] = useState('')
@@ -442,7 +457,14 @@ function ModalCrearEntidad({
       }
       await teamApi.unifiedCreate(payload)
       avisar(`${etiquetaRol(rol)} creado. Se enviaron credenciales a ${correo.trim()}.`, 'ok')
-      onListo()
+      onListo({
+        nombre: nombre.trim(),
+        numeroDocumento: numeroDocumento.trim(),
+        correo: correo.trim(),
+        telefonoCelular: telefono.trim(),
+        activo: true,
+        _local: true,
+      })
     } catch (e) {
       setError(mensajeDeError(e))
       setEnviando(false)
@@ -561,6 +583,7 @@ function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
             fondo={activo ? color.successBg : color.borderSoft}
             colorTexto={activo ? color.success : color.text3}
           />
+          {e._local ? <Text style={est.sincro}>Sincronizando…</Text> : null}
           {e.codigo ? <Text style={est.codigo}>cód. {e.codigo}</Text> : null}
         </View>
       </View>
@@ -589,6 +612,7 @@ const est = StyleSheet.create({
   detalle: { fontSize: 11.5, color: color.text2, marginTop: 3 },
   fecha: { fontSize: 11, color: color.text4, marginTop: 4 },
   codigo: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
+  sincro: { fontSize: 10, color: color.warning, fontWeight: '700' },
   comTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text, marginTop: 18 },
   comAyuda: { fontSize: 11.5, color: color.text3, marginTop: 4, lineHeight: 16 },
   comFila: {

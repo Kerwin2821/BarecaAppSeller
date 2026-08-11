@@ -12,6 +12,7 @@ import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
 import { Boton, Campo, Tarjeta } from '@/components/Ui'
 import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
+import { Modal } from '@/components/Modal'
 import { useToast } from '@/components/Toast'
 import { color } from '@/lib/tema'
 
@@ -110,6 +111,7 @@ export default function Reporte() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null)
+  const [sel, setSel] = useState<any | null>(null)
 
   // Opciones de los combos (proveedores/productos/kioscos…), una sola vez.
   const [opciones, setOpciones] = useState<any>({})
@@ -437,7 +439,7 @@ export default function Reporte() {
       ) : (
         <View style={{ gap: 8 }}>
           {filas.map((r, i) => (
-            <PolizaFila key={`${i}-${r.numeroPoliza ?? 'p'}-${r.proveedor ?? ''}`} r={r} />
+            <PolizaFila key={`${i}-${r.numeroPoliza ?? 'p'}-${r.proveedor ?? ''}`} r={r} onPress={() => setSel(r)} />
           ))}
           {total > TAM_PAGINA ? (
             <View style={est.pager}>
@@ -453,6 +455,7 @@ export default function Reporte() {
           ) : null}
         </View>
       )}
+      <DetalleModal r={sel} niveles={niveles} onCerrar={() => setSel(null)} />
     </Pantalla>
   )
 }
@@ -520,7 +523,7 @@ function LogoAseg({ nombre }: { nombre?: string }) {
   )
 }
 
-function PolizaFila({ r }: { r: any }) {
+function PolizaFila({ r, onPress }: { r: any; onPress: () => void }) {
   const vigencia =
     r.vigenciaDesde && r.vigenciaHasta
       ? `${fechaCorta(r.vigenciaDesde)} – ${fechaCorta(r.vigenciaHasta)}`
@@ -528,34 +531,160 @@ function PolizaFila({ r }: { r: any }) {
         ? fechaCorta(r.vigenciaDesde)
         : '—'
   return (
-    <Tarjeta style={{ padding: 14 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-        <Text style={est.polNum}>N° {r.numeroPoliza ?? '—'}</Text>
-        <Text style={est.polFecha}>{r.fecha ? fechaCorta(r.fecha) : '—'}</Text>
-      </View>
-      <View style={est.asegRow}>
-        <LogoAseg nombre={r.proveedor} />
-        <Text style={est.polLinea} numberOfLines={1}>
-          {[r.proveedor, r.producto].filter(Boolean).join(' · ') || '—'}
-        </Text>
-      </View>
-      {r.vendedor ? (
-        <Text style={est.polSub} numberOfLines={1}>
-          Vendedor: {r.vendedor}
-        </Text>
-      ) : null}
-      <Text style={est.polSub}>Vigencia: {vigencia}</Text>
-      <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {r.tieneApov ? <Etiqueta t="👥 APOV" /> : null}
-        {r.tieneGrua ? <Etiqueta t="🚚 Grúa" /> : null}
-        {r.placa ? <Etiqueta t={String(r.placa)} tenue /> : null}
-        {r.urlPoliza ? (
-          <Pressable onPress={() => Linking.openURL(r.urlPoliza)} hitSlop={6}>
-            <Text style={est.pdfLink}>Ver PDF ↗</Text>
-          </Pressable>
+    <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+      <Tarjeta style={{ padding: 14 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <Text style={est.polNum}>N° {r.numeroPoliza ?? '—'}</Text>
+          <Text style={est.polFecha}>{r.fecha ? fechaCorta(r.fecha) : '—'}</Text>
+        </View>
+        <View style={est.asegRow}>
+          <LogoAseg nombre={r.proveedor} />
+          <Text style={est.provNombre} numberOfLines={1}>
+            {r.proveedor || '—'}
+          </Text>
+        </View>
+        {r.producto ? (
+          <Text style={est.prodLinea} numberOfLines={1}>
+            {r.producto}
+          </Text>
         ) : null}
-      </View>
-    </Tarjeta>
+        {r.vendedor ? (
+          <Text style={est.polSub} numberOfLines={1}>
+            Vendedor: {r.vendedor}
+          </Text>
+        ) : null}
+        <Text style={est.polSub} numberOfLines={1}>
+          Vigencia: {vigencia}
+        </Text>
+        <View style={est.filaBadges}>
+          {r.tieneApov ? <Etiqueta t="👥 APOV" /> : null}
+          {r.tieneGrua ? <Etiqueta t="🚚 Grúa" /> : null}
+          {r.placa ? <Etiqueta t={String(r.placa)} tenue /> : null}
+          <View style={{ flex: 1 }} />
+          <Text style={est.verDetalle}>Ver detalle ›</Text>
+        </View>
+      </Tarjeta>
+    </Pressable>
+  )
+}
+
+/* ── Detalle de póliza (modal con toda la info del ReportRow) ── */
+function Sec({ titulo }: { titulo: string }) {
+  return <Text style={est.secDet}>{titulo}</Text>
+}
+function Fila({ k, v }: { k: string; v?: string | number | null }) {
+  if (v === null || v === undefined || v === '' || v === '—') return null
+  return (
+    <View style={est.filaDet}>
+      <Text style={est.filaDetK}>{k}</Text>
+      <Text style={est.filaDetV}>{String(v)}</Text>
+    </View>
+  )
+}
+
+function DetalleModal({ r, niveles, onCerrar }: { r: any | null; niveles: UserRole[]; onCerrar: () => void }) {
+  const abrir = (url?: string) => {
+    if (url) Linking.openURL(url).catch(() => undefined)
+  }
+  const money = (x: any, sym = 'Bs.') => (typeof x === 'number' && !Number.isNaN(x) ? moneda(x, sym) : null)
+  const vig = r && r.vigenciaDesde && r.vigenciaHasta ? `${fechaCorta(r.vigenciaDesde)} – ${fechaCorta(r.vigenciaHasta)}` : null
+
+  return (
+    <Modal
+      abierto={!!r}
+      onCerrar={onCerrar}
+      titulo={r ? `Póliza N° ${r.numeroPoliza ?? '—'}` : ''}
+      subtitulo={r?.proveedor ?? undefined}
+    >
+      {r ? (
+        <View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <LogoAseg nombre={r.proveedor} />
+            {r.estado ? <Etiqueta t={String(r.estado)} tenue /> : null}
+          </View>
+
+          <Sec titulo="Póliza" />
+          <Fila k="N° de póliza" v={r.numeroPoliza} />
+          <Fila k="Aseguradora" v={r.proveedor} />
+          <Fila k="Producto" v={r.producto} />
+          <Fila k="Estado" v={r.estado} />
+          <Fila k="Canal" v={r.canal} />
+          <Fila k="Emitida" v={r.fecha ? fechaCorta(r.fecha) : null} />
+          <Fila k="Vigencia" v={vig} />
+          <Fila k="Vendedor" v={r.vendedor} />
+
+          <Sec titulo="Tomador" />
+          <Fila k="Nombre" v={r.tomador} />
+          <Fila k="Cédula" v={r.cedulaTomador} />
+          <Fila k="Teléfono" v={r.telefonoTomador} />
+          <Fila k="Correo" v={r.correoTomador} />
+          <Fila k="Fecha de nacimiento" v={r.fechaNacimientoTomador ? fechaCorta(r.fechaNacimientoTomador) : null} />
+
+          {r.titular || r.cedulaTitular ? (
+            <>
+              <Sec titulo="Titular" />
+              <Fila k="Nombre" v={r.titular} />
+              <Fila k="Cédula" v={r.cedulaTitular} />
+            </>
+          ) : null}
+
+          {r.conductor || r.cedulaConductor ? (
+            <>
+              <Sec titulo="Conductor" />
+              <Fila k="Nombre" v={r.conductor} />
+              <Fila k="Cédula" v={r.cedulaConductor} />
+            </>
+          ) : null}
+
+          {r.placa || r.marca || r.modelo ? (
+            <>
+              <Sec titulo="Vehículo" />
+              <Fila k="Placa" v={r.placa} />
+              <Fila k="Marca" v={r.marca} />
+              <Fila k="Modelo" v={r.modelo} />
+            </>
+          ) : null}
+
+          <Sec titulo="Montos" />
+          <Fila k="Monto USD" v={money(r.montoUsd, '$')} />
+          <Fila k="Monto Bs" v={money(r.montoBs)} />
+          <Fila k="Tasa del día" v={money(r.tasaDia)} />
+          <Fila k="Descuento" v={money(r.descuento)} />
+
+          <Sec titulo="Coberturas" />
+          <Fila k="APOV (RCV Ocupantes)" v={r.tieneApov ? 'Sí' : 'No'} />
+          {r.tieneApov ? (
+            <>
+              <Fila k="APOV total" v={money(r.apovTotal)} />
+              <Fila k="APOV muerte" v={money(r.apovMuerte)} />
+              <Fila k="APOV invalidez" v={money(r.apovInvalidez)} />
+              <Fila k="APOV gastos médicos" v={money(r.apovMedico)} />
+              <Fila k="APOV funerario" v={money(r.apovFunerario)} />
+            </>
+          ) : null}
+          <Fila k="Grúa" v={r.tieneGrua ? 'Sí' : 'No'} />
+
+          <Sec titulo="Comisiones" />
+          {niveles.map((lvl) => (
+            <Fila key={lvl} k={`Comisión ${NIVEL_LABEL[lvl]}`} v={money(r[NIVEL_CAMPO[lvl]])} />
+          ))}
+
+          {r.urlPoliza || r.urlCarnet ? (
+            <>
+              <Sec titulo="Documentos" />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+                {r.urlPoliza ? <Boton texto="Ver comprobante" variante="soft" onPress={() => abrir(r.urlPoliza)} style={{ flex: 1 }} /> : null}
+                {r.urlCarnet ? <Boton texto="Ver carnet" variante="soft" onPress={() => abrir(r.urlCarnet)} style={{ flex: 1 }} /> : null}
+              </View>
+            </>
+          ) : null}
+
+          <View style={{ marginTop: 16 }}>
+            <Boton texto="Cerrar" onPress={onCerrar} />
+          </View>
+        </View>
+      ) : null}
+    </Modal>
   )
 }
 
@@ -616,7 +745,7 @@ const est = StyleSheet.create({
   },
   etqTxt: { fontSize: 10.5, fontWeight: '800', color: color.primaryDark },
   pdfLink: { fontSize: 11.5, fontWeight: '800', color: color.primary },
-  asegRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  asegRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   logoChip: {
     backgroundColor: '#fff',
     borderRadius: 6,
@@ -625,4 +754,12 @@ const est = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
+  provNombre: { flex: 1, fontSize: 13.5, fontWeight: '800', color: color.text },
+  prodLinea: { fontSize: 12, color: color.text2, marginTop: 4 },
+  filaBadges: { flexDirection: 'row', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' },
+  verDetalle: { fontSize: 12, fontWeight: '800', color: color.primary },
+  secDet: { fontSize: 12.5, fontWeight: '800', color: color.primaryDark, marginTop: 16, marginBottom: 4, letterSpacing: 0.2 },
+  filaDet: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: color.borderSoft },
+  filaDetK: { fontSize: 12, color: color.text3, flexShrink: 0 },
+  filaDetV: { fontSize: 12.5, fontWeight: '600', color: color.text, flex: 1, textAlign: 'right' },
 })
