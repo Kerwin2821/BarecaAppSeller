@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
 import { ApiException, mensajeDeError } from '../lib/api'
@@ -1247,19 +1248,10 @@ function PagoExito({
       </Tarjeta>
 
       {docs.length > 0 ? (
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 12 }}>
           <Text style={est.seccion}>Documentos de la póliza</Text>
           {docs.map((d) => (
-            <Pressable key={d.etiqueta} onPress={() => d.url && Linking.openURL(d.url).catch(() => undefined)}>
-              <Tarjeta style={est.docCard}>
-                <Text style={{ fontSize: 22 }}>{d.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={est.docTitulo}>{d.etiqueta}</Text>
-                  <Text style={est.docSub}>Toca para abrir / descargar</Text>
-                </View>
-                <Text style={est.docFlecha}>⬇</Text>
-              </Tarjeta>
-            </Pressable>
+            <DocMini key={d.etiqueta} etiqueta={d.etiqueta} emoji={d.emoji} url={d.url as string} />
           ))}
         </View>
       ) : (
@@ -1271,6 +1263,51 @@ function PagoExito({
 
       <Boton texto="Nueva venta" onPress={onNuevo} style={{ marginTop: 4 }} />
     </View>
+  )
+}
+
+/** Mini vista previa de un PDF (visor de Google en Android / directo en iOS). */
+function DocMini({ etiqueta, emoji, url }: { etiqueta: string; emoji: string; url: string }) {
+  const [error, setError] = useState(false)
+  const visor = Platform.OS === 'android' ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}` : url
+  const abrir = () => Linking.openURL(url).catch(() => undefined)
+  return (
+    <Tarjeta style={{ padding: 0, overflow: 'hidden' }}>
+      <View style={est.docMini}>
+        {error ? (
+          <View style={est.docMiniCentro}>
+            <Text style={{ fontSize: 26 }}>{emoji}</Text>
+            <Text style={est.docMiniMsg}>Vista previa no disponible — toca “Abrir”.</Text>
+          </View>
+        ) : (
+          <WebView
+            source={{ uri: visor }}
+            style={{ flex: 1, backgroundColor: '#fff' }}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={est.docMiniCentro}>
+                <ActivityIndicator color={color.primary} />
+              </View>
+            )}
+            onError={() => setError(true)}
+            onHttpError={() => setError(true)}
+            scrollEnabled={false}
+          />
+        )}
+        {/* Capa para abrir el documento completo al tocar la vista previa. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={abrir} />
+      </View>
+      <Pressable onPress={abrir} style={est.docFooter}>
+        <Text style={{ fontSize: 20 }}>{emoji}</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={est.docTitulo} numberOfLines={1}>
+            {etiqueta}
+          </Text>
+          <Text style={est.docSub}>Toca para abrir / descargar</Text>
+        </View>
+        <Text style={est.docFlecha}>⬇</Text>
+      </Pressable>
+    </Tarjeta>
   )
 }
 
@@ -1463,4 +1500,8 @@ const est = StyleSheet.create({
   docTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text },
   docSub: { fontSize: 11, color: color.text3, marginTop: 1 },
   docFlecha: { fontSize: 18, color: color.primary, fontWeight: '800' },
+  docMini: { height: 180, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: color.borderSoft },
+  docMiniCentro: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
+  docMiniMsg: { fontSize: 11.5, color: color.text3, textAlign: 'center' },
+  docFooter: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
 })

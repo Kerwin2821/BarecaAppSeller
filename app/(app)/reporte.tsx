@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { useAuth } from '@/lib/auth'
 import { reportApi } from '@/lib/endpoints'
@@ -504,6 +504,22 @@ function CampoFecha({
   )
 }
 
+/** Logo de la aseguradora emisora (mismo criterio que el resto del app). */
+const LOGOS_ASEG: { re: RegExp; src: number }[] = [
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
+  { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
+  { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
+]
+function LogoAseg({ nombre }: { nombre?: string }) {
+  const logo = LOGOS_ASEG.find((l) => l.re.test(nombre || ''))
+  if (!logo) return null
+  return (
+    <View style={est.logoChip}>
+      <Image source={logo.src} resizeMode="contain" style={{ height: 15, width: 66 }} />
+    </View>
+  )
+}
+
 function PolizaFila({ r }: { r: any }) {
   const vigencia =
     r.vigenciaDesde && r.vigenciaHasta
@@ -517,9 +533,12 @@ function PolizaFila({ r }: { r: any }) {
         <Text style={est.polNum}>N° {r.numeroPoliza ?? '—'}</Text>
         <Text style={est.polFecha}>{r.fecha ? fechaCorta(r.fecha) : '—'}</Text>
       </View>
-      <Text style={est.polLinea} numberOfLines={1}>
-        {[r.proveedor, r.producto].filter(Boolean).join(' · ') || '—'}
-      </Text>
+      <View style={est.asegRow}>
+        <LogoAseg nombre={r.proveedor} />
+        <Text style={est.polLinea} numberOfLines={1}>
+          {[r.proveedor, r.producto].filter(Boolean).join(' · ') || '—'}
+        </Text>
+      </View>
       {r.vendedor ? (
         <Text style={est.polSub} numberOfLines={1}>
           Vendedor: {r.vendedor}
@@ -527,8 +546,8 @@ function PolizaFila({ r }: { r: any }) {
       ) : null}
       <Text style={est.polSub}>Vigencia: {vigencia}</Text>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {r.tieneApov ? <Etiqueta t="APOV" /> : null}
-        {r.tieneGrua ? <Etiqueta t="Grúa" /> : null}
+        {r.tieneApov ? <Etiqueta t="👥 APOV" /> : null}
+        {r.tieneGrua ? <Etiqueta t="🚚 Grúa" /> : null}
         {r.placa ? <Etiqueta t={String(r.placa)} tenue /> : null}
         {r.urlPoliza ? (
           <Pressable onPress={() => Linking.openURL(r.urlPoliza)} hitSlop={6}>
@@ -597,4 +616,13 @@ const est = StyleSheet.create({
   },
   etqTxt: { fontSize: 10.5, fontWeight: '800', color: color.primaryDark },
   pdfLink: { fontSize: 11.5, fontWeight: '800', color: color.primary },
+  asegRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  logoChip: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: color.borderSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
 })
