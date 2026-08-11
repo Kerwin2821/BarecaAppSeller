@@ -31,7 +31,6 @@ export default function AppLayout() {
           <Stack.Screen name="mapa-conexiones" options={{ title: 'Mapa de Conexiones' }} />
           <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
           <Stack.Screen name="chat" options={{ title: 'Chat' }} />
-          <Stack.Screen name="ajuste-pagos" options={{ title: 'Ajuste de Pagos' }} />
         </Stack>
       </View>
     </DrawerProvider>

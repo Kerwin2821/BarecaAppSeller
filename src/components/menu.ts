@@ -9,7 +9,6 @@ import {
   puedeVerRetos,
 } from '../lib/roles'
 import {
-  IcoAjustePagos,
   IcoChat,
   IcoComisiones,
   IcoEquipo,
@@ -87,14 +86,6 @@ export const MENU: ItemMenu[] = [
     subtitulo: 'Oficinas, distribuidores, kioscos',
     Icono: IcoEquipo,
     visible: puedeGestionarEquipo,
-    grupo: 'Gestión',
-  },
-  {
-    ruta: '/ajuste-pagos',
-    titulo: 'Ajuste de Pagos',
-    subtitulo: 'Conciliación de pagos',
-    Icono: IcoAjustePagos,
-    visible: puedeVerReportes,
     grupo: 'Gestión',
   },
   {
