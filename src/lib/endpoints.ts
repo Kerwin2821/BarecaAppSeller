@@ -313,6 +313,23 @@ export const ocrApi = {
     bff<{ statusCode?: number; data: any }>('/clients/clientes/process-certificado', { method: 'POST', body: form, sinCierre: true }),
 }
 
+/**
+ * Validaciones en vivo del paso de cliente (réplica de los async validators del
+ * portal): placa con póliza vigente, correo y teléfono ya registrados. Si hay
+ * coincidencia, la web bloquea el avance.
+ */
+export const validacionApi = {
+  /** ¿La placa tiene una póliza vigente? (checkActivePolicy). */
+  polizaVigentePorPlaca: (placa: string) =>
+    bff<any>(`/policies/polizas/v1/vigente/${encodeURIComponent(placa)}`, { sinCierre: true }),
+  /** ¿El correo ya existe? (checkEmailExists) → data:boolean. */
+  existeCorreo: (email: string) =>
+    bff<ApiResponse<boolean>>(`/clients/correos/existe-correo/${encodeURIComponent(email)}`, { sinCierre: true }),
+  /** ¿El teléfono (internacional) ya existe? (checkPhoneExists) → data:boolean. */
+  existeTelefono: (intl: string) =>
+    bff<ApiResponse<boolean>>(`/clients/telefonos/existe-telefono/${encodeURIComponent(intl)}`, { sinCierre: true }),
+}
+
 // ── Geo (estados/municipios/ciudades) para Datos del Cliente ─
 export interface GeoOpcion { id: number; nombre: string }
 export const geoApi = {

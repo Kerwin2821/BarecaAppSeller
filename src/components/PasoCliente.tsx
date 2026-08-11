@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
-import { catalogoApi, geoApi, type GeoOpcion } from '../lib/endpoints'
+import { catalogoApi, geoApi, validacionApi, type GeoOpcion } from '../lib/endpoints'
 import { mensajeDeError } from '../lib/api'
 import { ocrCarnet, ocrCedula, type FuenteImagen } from '../lib/ocr'
 import { fechaCorta, isoDia } from '../lib/formato'
@@ -49,6 +49,19 @@ const GENEROS: OpcionDrop[] = [
 ]
 
 const aOpc = (xs: GeoOpcion[]): OpcionDrop[] => xs.map((x) => ({ valor: String(x.id), texto: x.nombre }))
+
+type Chk = 'idle' | 'checking' | 'libre' | 'existe'
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// Móviles/fijos venezolanos (igual que venezuelanPhone del portal).
+const VE_PHONE_RE = /^(0412|0422|0414|0424|0416|0426|02\d{2})\d{7}$/
+
+/** Teléfono VE a formato internacional (réplica de FormatService.toInternationalFormat). */
+function aInternacional(phone: string): string {
+  let c = (phone || '').replace(/\D/g, '')
+  if (c.startsWith('58')) return `+${c}`
+  if (c.startsWith('0')) c = c.slice(1)
+  return `58${c}`
+}
 
 /** Normaliza la respuesta geo del BFF (array plano o {content}/{data}). */
 function aGeo(r: any): GeoOpcion[] {
@@ -179,6 +192,76 @@ export function PasoCliente({
   const [pickerFecha, setPickerFecha] = useState(false)
   const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
 
+  // Validaciones en vivo (igual que la web): placa vigente + correo/teléfono ya registrados.
+  const [placaChk, setPlacaChk] = useState<Chk>('idle')
+  const [placaPoliza, setPlacaPoliza] = useState<string | null>(null)
+  const [correoChk, setCorreoChk] = useState<Chk>('idle')
+  const [telefonoChk, setTelefonoChk] = useState<Chk>('idle')
+
+  // Placa → ¿póliza vigente? (debounce 500 ms, como activePolicyValidator).
+  useEffect(() => {
+    if (!mostrarVehiculo) return
+    const placa = d.placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (placa.length < 5) {
+      setPlacaChk('idle')
+      setPlacaPoliza(null)
+      return
+    }
+    setPlacaChk('checking')
+    const t = setTimeout(async () => {
+      try {
+        const r = await validacionApi.polizaVigentePorPlaca(placa)
+        const num = r?.numeroPoliza ?? r?.data?.numeroPoliza ?? (r?.data === 'EXISTENTE' ? 'EXISTENTE' : null)
+        const existe = !!num && r?.statusCode !== 404
+        setPlacaChk(existe ? 'existe' : 'libre')
+        setPlacaPoliza(existe ? String(num) : null)
+      } catch {
+        // 404/errores → sin póliza (como catchError→of(null)); no bloquea.
+        setPlacaChk('libre')
+        setPlacaPoliza(null)
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [d.placa, mostrarVehiculo])
+
+  // Correo → ¿ya existe? (debounce 500 ms, como emailUniqueness).
+  useEffect(() => {
+    const email = d.correo.trim()
+    if (!EMAIL_RE.test(email)) {
+      setCorreoChk('idle')
+      return
+    }
+    setCorreoChk('checking')
+    const t = setTimeout(async () => {
+      try {
+        const r = await validacionApi.existeCorreo(email)
+        setCorreoChk(r?.data === true ? 'existe' : 'libre')
+      } catch {
+        setCorreoChk('libre')
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [d.correo])
+
+  // Teléfono → ¿ya existe? (debounce 500 ms, como phoneUniqueness).
+  useEffect(() => {
+    const tel = d.telefono.trim()
+    if (!VE_PHONE_RE.test(tel)) {
+      setTelefonoChk('idle')
+      return
+    }
+    setTelefonoChk('checking')
+    const t = setTimeout(async () => {
+      try {
+        const r = await validacionApi.existeTelefono(aInternacional(tel))
+        setTelefonoChk(r?.data === true ? 'existe' : 'libre')
+      } catch {
+        setTelefonoChk('libre')
+      }
+    }, 500)
+    return () => clearTimeout(t)
+  }, [d.telefono])
+
   // Catálogo de vehículos (cascada marca → modelo → versión → año).
   const [marcasCat, setMarcasCat] = useState<{ id: string; nombre: string }[]>([])
   const [modelosCat, setModelosCat] = useState<{ id: string; nombre: string }[]>([])
@@ -273,7 +356,13 @@ export function PasoCliente({
     d.apellidos.trim().length >= 2 &&
     !!d.genero &&
     (d.correo.includes('@') || d.telefono.length >= 7) &&
-    !!d.estadoId
+    !!d.estadoId &&
+    // No avanzar si hay coincidencia (o mientras se valida), como la web.
+    correoChk !== 'existe' &&
+    correoChk !== 'checking' &&
+    telefonoChk !== 'existe' &&
+    telefonoChk !== 'checking' &&
+    (!mostrarVehiculo || (placaChk !== 'existe' && placaChk !== 'checking'))
 
   const fechaNac = d.fechaNacimiento ? new Date(`${d.fechaNacimiento}T12:00:00`) : new Date(2000, 0, 1)
 
@@ -350,22 +439,30 @@ export function PasoCliente({
       <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Datos de Contacto</Text>
         <Text style={est.hint}>Para enviar la póliza y notificaciones al cliente.</Text>
-        <Campo
-          etiqueta="Correo electrónico"
-          placeholder="cliente@correo.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={d.correo}
-          onChangeText={(t) => set('correo', t.trim())}
-        />
-        <Campo
-          etiqueta="Teléfono"
-          placeholder="04141234567"
-          keyboardType="phone-pad"
-          value={d.telefono}
-          onChangeText={(t) => set('telefono', t.replace(/[^0-9]/g, ''))}
-        />
+        <View>
+          <Campo
+            etiqueta="Correo electrónico"
+            placeholder="cliente@correo.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={d.correo}
+            error={correoChk === 'existe'}
+            onChangeText={(t) => set('correo', t.trim())}
+          />
+          <EstadoChk estado={correoChk} mensajeExiste="Este correo ya está registrado en el sistema." />
+        </View>
+        <View>
+          <Campo
+            etiqueta="Teléfono"
+            placeholder="04141234567"
+            keyboardType="phone-pad"
+            value={d.telefono}
+            error={telefonoChk === 'existe'}
+            onChangeText={(t) => set('telefono', t.replace(/[^0-9]/g, ''))}
+          />
+          <EstadoChk estado={telefonoChk} mensajeExiste="Este teléfono ya está registrado en el sistema." />
+        </View>
       </Tarjeta>
 
       {mostrarVehiculo ? (
@@ -429,8 +526,21 @@ export function PasoCliente({
             <Campo etiqueta="Modelo" placeholder="Modelo" value={d.modelo} onChangeText={(t) => set('modelo', t)} style={{ flex: 1 }} />
           </View>
         )}
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Campo etiqueta="Placa" placeholder="AB123CD" autoCapitalize="characters" value={d.placa} onChangeText={(t) => set('placa', t.toUpperCase())} style={{ flex: 1 }} />
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}>
+            <Campo
+              etiqueta="Placa"
+              placeholder="AB123CD"
+              autoCapitalize="characters"
+              value={d.placa}
+              error={placaChk === 'existe'}
+              onChangeText={(t) => set('placa', t.toUpperCase())}
+            />
+            <EstadoChk
+              estado={placaChk}
+              mensajeExiste={`Placa con póliza vigente${placaPoliza && placaPoliza !== 'EXISTENTE' ? ` (Nro: ${placaPoliza})` : ''}. No se puede continuar.`}
+            />
+          </View>
           <Campo etiqueta="Color" placeholder="Color" value={d.color} onChangeText={(t) => set('color', t)} style={{ flex: 1 }} />
         </View>
         <Campo
@@ -516,10 +626,21 @@ function ZonaOCR({
   )
 }
 
+/** Línea de estado de una validación en vivo (verificando / disponible / existe). */
+function EstadoChk({ estado, mensajeExiste }: { estado: Chk; mensajeExiste: string }) {
+  if (estado === 'idle') return null
+  if (estado === 'checking') return <Text style={est.chkVerificando}>Verificando…</Text>
+  if (estado === 'existe') return <Text style={est.chkError}>⚠ {mensajeExiste}</Text>
+  return <Text style={est.chkOk}>✓ Disponible</Text>
+}
+
 const est = StyleSheet.create({
   titulo: { fontSize: 15, fontWeight: '800', color: color.text },
   hint: { fontSize: 12, color: color.text3, lineHeight: 16 },
   label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
+  chkVerificando: { fontSize: 11.5, color: color.text3, marginTop: 5 },
+  chkError: { fontSize: 11.5, color: color.danger, fontWeight: '700', marginTop: 5, lineHeight: 15 },
+  chkOk: { fontSize: 11.5, color: color.success, fontWeight: '700', marginTop: 5 },
   fecha: {
     borderWidth: 1,
     borderColor: color.borderInput,
