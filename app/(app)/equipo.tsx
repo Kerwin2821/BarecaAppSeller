@@ -62,7 +62,14 @@ export default function Equipo() {
     // El BFF puede envolver en {data} o devolver el objeto directo.
     return (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
   }, [user])
-  const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
+  // Re-carga cuando el enriquecimiento trae el id numérico del ente (antes es undefined).
+  const { datos, cargando, error, recargar } = useApi(cargar, [
+    user?.loginId,
+    user?.barecaEntityId,
+    user?.officeEntityId,
+    user?.distributorEntityId,
+    user?.kioskEntityId,
+  ])
 
   const lista: any[] = useMemo(() => {
     if (!datos) return []
