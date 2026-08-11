@@ -110,52 +110,8 @@ export default function Equipo() {
   const nuevoRol = rolCreable(user?.role)
 
   const cargar = useCallback(async () => {
-    const params = paramsJerarquia(user)
-    const r = await userApi.teamHierarchy(params)
-    const datos = (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
-    if (__DEV__) {
-      console.log('[EQUIPO] jerarquía params=', JSON.stringify(params), '→ kioscos:', datos.kiosks?.length ?? 'n/a', '· distribuidores:', datos.distributors?.length ?? 'n/a')
-    }
-    // Fallback + diagnóstico: si el filtro numérico de la jerarquía no trae el nivel creable,
-    // probamos por UUID y por id numérico directo, y registramos qué devuelve cada uno.
-    const dbg: any = {}
-    if (user) {
-      const uuid = actorUuid(user)
-      try {
-        if (user.role === 'DISTRIBUIDOR' && (datos.kiosks?.length ?? 0) === 0) {
-          // ¿Qué distribuidor resuelve el UUID? (para ver si el id numérico es el correcto)
-          if (uuid) {
-            const d: any = await userApi.distribuidorByUuid(uuid).catch(() => null)
-            dbg.dId = d?.id
-            dbg.dNom = String(d?.nombre ?? '').slice(0, 10)
-          }
-          for (const clave of [uuid, user.distributorEntityId].filter(Boolean)) {
-            const esUuid = String(clave).length > 20
-            try {
-              const rk: any = await userApi.kioscosPorDistribuidor(clave as string | number)
-              const arr = (rk?.data ?? rk ?? []) as any[]
-              dbg[esUuid ? 'kU' : 'kN'] = Array.isArray(arr) ? arr.length : `t:${typeof arr}`
-              if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') →', Array.isArray(arr) ? `${arr.length} kioscos` : typeof arr)
-              if (Array.isArray(arr) && arr.length) {
-                datos.kiosks = arr
-                break
-              }
-            } catch (e) {
-              dbg[esUuid ? 'kU' : 'kN'] = `E${(e as any)?.status ?? ''}`
-              if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') ERROR', String(e))
-            }
-          }
-        } else if (user.role === 'OFICINA_REGIONAL' && (datos.distributors?.length ?? 0) === 0 && uuid) {
-          const rd: any = await userApi.distribuidoresPorOficina(uuid)
-          const arr = (rd?.data ?? rd ?? []) as any[]
-          if (Array.isArray(arr) && arr.length) datos.distributors = arr
-        }
-      } catch {
-        /* best-effort */
-      }
-    }
-    ;(datos as any)._dbg = dbg
-    return datos
+    const r = await userApi.teamHierarchy(paramsJerarquia(user))
+    return (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [
     user?.loginId,
@@ -276,18 +232,6 @@ export default function Equipo() {
         titulo="Gestión de Equipo"
         detalle="Tu red comercial multinivel (Corporativo → Oficina Regional → Distribuidor → Kiosco)"
       />
-
-      {__DEV__ ? (
-        <Text selectable style={est.dbg}>
-          {`🐞 rol=${user?.role} · entId=${String(
-            user?.distributorEntityId ?? user?.officeEntityId ?? user?.barecaEntityId,
-          )} · uuid=${(user ? actorUuid(user) : null)?.slice(0, 8) ?? '-'} · kioscos=${
-            datos?.kiosks?.length ?? 'n/a'
-          }\ndId=${(datos as any)?._dbg?.dId ?? '-'} (${(datos as any)?._dbg?.dNom ?? ''}) · kU=${
-            (datos as any)?._dbg?.kU ?? '-'
-          } · kN=${(datos as any)?._dbg?.kN ?? '-'}`}
-        </Text>
-      ) : null}
 
       {nuevoRol ? (
         <View style={{ marginBottom: 12 }}>
@@ -688,7 +632,6 @@ const est = StyleSheet.create({
   fecha: { fontSize: 11, color: color.text4, marginTop: 4 },
   codigo: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
   sincro: { fontSize: 10, color: color.warning, fontWeight: '700' },
-  dbg: { fontSize: 10, color: color.text2, fontFamily: fuenteMono, backgroundColor: '#FEF3C7', padding: 6, borderRadius: 6, marginBottom: 10 },
   comTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text, marginTop: 18 },
   comAyuda: { fontSize: 11.5, color: color.text3, marginTop: 4, lineHeight: 16 },
   comFila: {

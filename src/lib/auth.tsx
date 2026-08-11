@@ -268,10 +268,13 @@ async function enriquecerPerfil(base: CurrentUser): Promise<CurrentUser | null> 
     const [emp, entidad] = await Promise.all([
       base.id ? userApi.empleadoByUuid(base.id).catch(() => null) : Promise.resolve(null),
       (async () => {
-        if (base.barecaId) return userApi.barecaByUuid(base.barecaId).catch(() => null)
-        if (base.oficinaRegionalId) return userApi.oficinaByUuid(base.oficinaRegionalId).catch(() => null)
-        if (base.distribuidorId) return userApi.distribuidorByUuid(base.distribuidorId).catch(() => null)
-        if (base.kioskoId) return userApi.kioscoByUuid(base.kioskoId).catch(() => null)
+        // Resolver la entidad SEGÚN EL ROL (no por el primer id presente): el token de un
+        // DISTRIBUIDOR/KIOSCO también trae los ids de sus padres (barecaId/oficinaId), y si se
+        // resolvía por el primero se obtenía la ENTIDAD PADRE → id numérico equivocado.
+        if (base.role === 'BARECA' && base.barecaId) return userApi.barecaByUuid(base.barecaId).catch(() => null)
+        if (base.role === 'OFICINA_REGIONAL' && base.oficinaRegionalId) return userApi.oficinaByUuid(base.oficinaRegionalId).catch(() => null)
+        if (base.role === 'DISTRIBUIDOR' && base.distribuidorId) return userApi.distribuidorByUuid(base.distribuidorId).catch(() => null)
+        if (base.role === 'KIOSCO' && base.kioskoId) return userApi.kioscoByUuid(base.kioskoId).catch(() => null)
         return null
       })(),
     ])
