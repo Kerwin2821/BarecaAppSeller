@@ -34,6 +34,13 @@ const ENTIDAD_LABEL: Record<string, string> = {
   EMPLEADO: 'Empleado',
 }
 
+/** Pestaña que corresponde al nivel recién creado. */
+const TAB_DE_ROL: Record<string, Tab> = {
+  OFICINA_REGIONAL: 'offices',
+  DISTRIBUIDOR: 'distributors',
+  KIOSCO: 'kiosks',
+}
+
 /** Pestañas visibles por rol (viewableTeamTabs del AuthService del portal). */
 function tabsPorRol(rol: UserRole | null | undefined): { id: Tab; label: string }[] {
   const map: Record<string, { id: Tab; label: string }[]> = {
@@ -100,7 +107,26 @@ export default function Equipo() {
 
   const cargar = useCallback(async () => {
     const r = await userApi.teamHierarchy(paramsJerarquia(user))
-    return (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
+    const datos = (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
+    // Fallback por UUID si el filtro numérico de la jerarquía no trae el nivel que
+    // el usuario acaba de crear (posible desajuste id/uuid o consistencia eventual).
+    if (user) {
+      const uuid = actorUuid(user)
+      try {
+        if (user.role === 'DISTRIBUIDOR' && (datos.kiosks?.length ?? 0) === 0 && uuid) {
+          const rk: any = await userApi.kioscosPorDistribuidor(uuid)
+          const arr = (rk?.data ?? rk ?? []) as any[]
+          if (Array.isArray(arr) && arr.length) datos.kiosks = arr
+        } else if (user.role === 'OFICINA_REGIONAL' && (datos.distributors?.length ?? 0) === 0 && uuid) {
+          const rd: any = await userApi.distribuidoresPorOficina(uuid)
+          const arr = (rd?.data ?? rd ?? []) as any[]
+          if (Array.isArray(arr) && arr.length) datos.distributors = arr
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    return datos
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [
     user?.loginId,
@@ -256,7 +282,13 @@ export default function Equipo() {
           onCerrar={() => setCrearAbierto(false)}
           onListo={() => {
             setCrearAbierto(false)
+            setBusca('')
+            if (nuevoRol) setTab(TAB_DE_ROL[nuevoRol] ?? tab)
             recargar()
+            // El alta hace varios pasos en el backend; reintenta por si la lista
+            // aún no lo refleja (consistencia eventual).
+            setTimeout(() => recargar(), 1500)
+            setTimeout(() => recargar(), 4000)
           }}
         />
       ) : null}

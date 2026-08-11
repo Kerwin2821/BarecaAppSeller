@@ -107,6 +107,13 @@ export const userApi = {
   teamHierarchy: (params: Record<string, string | number | undefined>) =>
     bff<any>('/users/team/hierarchy', { params }),
 
+  /** Kioscos de un distribuidor por su id (numérico o UUID). Fallback de la jerarquía. */
+  kioscosPorDistribuidor: (distribuidorId: string | number) =>
+    bff<any>('/users/kioscos-puestos', { params: { 'distribuidoresId.equals': distribuidorId, page: 0, size: 200 } }),
+  /** Distribuidores de una oficina por su id. Fallback de la jerarquía. */
+  distribuidoresPorOficina: (oficinaId: string | number) =>
+    bff<any>('/users/distribuidores', { params: { 'oficinasRegionalesId.equals': oficinaId, page: 0, size: 200 } }),
+
   productos: () => bff<any>('/users/productos', { params: { page: 0, size: 200 } }),
 
   /** Datos de pago del actor (cuentas para recibir comisiones/retiros). */
