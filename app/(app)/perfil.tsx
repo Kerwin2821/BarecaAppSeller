@@ -22,9 +22,11 @@ import { useToast } from '@/components/Toast'
 import { MedidorClave } from '@/components/MedidorClave'
 import { Modal } from '@/components/Modal'
 import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
+import { LogoBanco } from '@/components/LogoBanco'
+import { bancoInfo, BANCOS_VE } from '@/lib/bancos'
 import { Pantalla } from '@/components/Pantalla'
 import { Alerta, Avatar, Boton, Campo, Tarjeta, TituloSeccion } from '@/components/Ui'
-import { color } from '@/lib/tema'
+import { color, fuenteMono } from '@/lib/tema'
 
 type Tab = 'info' | 'seguridad' | 'pagos' | 'referido'
 
@@ -49,7 +51,7 @@ export default function Perfil() {
       { id: 'info', label: 'Información Personal' },
       { id: 'seguridad', label: 'Seguridad' },
     ]
-    if (user?.role !== 'BARECA') t.push({ id: 'pagos', label: 'Métodos de Pago' })
+    if (user?.role !== 'BARECA') t.push({ id: 'pagos', label: 'Métodos de Cobro' })
     if (user?.role === 'DISTRIBUIDOR' || user?.role === 'KIOSCO') t.push({ id: 'referido', label: 'Link Referido' })
     return t
   }, [user?.role])
@@ -316,6 +318,7 @@ function TabPagos() {
   const [lista, setLista] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
   const [modal, setModal] = useState(false)
+  const [metodoSel, setMetodoSel] = useState<any | null>(null)
 
   const cargar = useCallback(async () => {
     if (!user) return
@@ -342,7 +345,7 @@ function TabPagos() {
   return (
     <View style={{ marginTop: 8 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <TituloSeccion style={{ marginTop: 8 }}>Métodos de Retiro</TituloSeccion>
+        <TituloSeccion style={{ marginTop: 8 }}>Métodos de Cobro</TituloSeccion>
         <Boton texto="+ Añadir" variante="mini" onPress={() => setModal(true)} />
       </View>
       <Text style={[est.ayuda, { marginBottom: 10 }]}>Administra las cuentas donde recibirás tus comisiones.</Text>
@@ -353,22 +356,34 @@ function TabPagos() {
         </Tarjeta>
       ) : lista.length === 0 ? (
         <Tarjeta style={{ padding: 16 }}>
-          <Text style={est.ayuda}>Aún no tienes métodos de retiro. Añade una cuenta de Pago Móvil.</Text>
+          <Text style={est.ayuda}>Aún no tienes métodos de cobro. Añade una cuenta de Pago Móvil.</Text>
         </Tarjeta>
       ) : (
         <View style={{ gap: 10 }}>
-          {lista.map((p, i) => (
-            <Tarjeta key={p?.datosPagosId ?? p?.id ?? i} style={{ padding: 16 }}>
-              {p?.alias ? <Text style={est.pagoAlias}>{p.alias}</Text> : null}
-              <Text style={est.pagoLinea}>
-                {[p?.banco, p?.telefono].filter(Boolean).join(' · ')}
-                {p?.numeroDocumento ? `  (${p.numeroDocumento})` : ''}
-              </Text>
-            </Tarjeta>
-          ))}
+          {lista.map((p, i) => {
+            const info = bancoInfo(p?.banco, p?.banco)
+            return (
+              <Pressable key={p?.datosPagosId ?? p?.id ?? i} onPress={() => setMetodoSel(p)}>
+                <Tarjeta style={est.pagoCard}>
+                  <LogoBanco codigo={p?.banco} size={42} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    {p?.alias ? <Text style={est.pagoAlias}>{p.alias}</Text> : null}
+                    <Text style={est.pagoBanco} numberOfLines={1}>
+                      {info.nombre}
+                    </Text>
+                    <Text style={est.pagoLinea} numberOfLines={1}>
+                      {[p?.telefono, p?.numeroDocumento].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                  <Text style={est.verDet}>›</Text>
+                </Tarjeta>
+              </Pressable>
+            )
+          })}
         </View>
       )}
 
+      <ModalDetallePago metodo={metodoSel} onCerrar={() => setMetodoSel(null)} />
       <ModalAgregarPago
         abierto={modal}
         onCerrar={() => setModal(false)}
@@ -377,6 +392,95 @@ function TabPagos() {
           cargar()
         }}
       />
+    </View>
+  )
+}
+
+/** Detalle de un método de cobro (logo del banco + datos). */
+function ModalDetallePago({ metodo, onCerrar }: { metodo: any | null; onCerrar: () => void }) {
+  const info = bancoInfo(metodo?.banco, metodo?.banco)
+  return (
+    <Modal abierto={!!metodo} onCerrar={onCerrar} titulo="Método de cobro" subtitulo={metodo?.alias || undefined}>
+      {metodo ? (
+        <View>
+          <View style={{ alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <LogoBanco codigo={metodo?.banco} size={68} />
+            <Text style={est.detBanco}>{info.nombre}</Text>
+            <Text style={est.detCod}>Código {info.codigo}</Text>
+          </View>
+          <Tarjeta style={{ padding: 16 }}>
+            {metodo?.alias ? <Dato etiqueta="Alias" valor={metodo.alias} /> : null}
+            <Dato etiqueta="Banco" valor={info.nombre} />
+            <Dato etiqueta="Teléfono (Pago Móvil)" valor={metodo?.telefono} />
+            <Dato etiqueta="Documento" valor={metodo?.numeroDocumento} />
+          </Tarjeta>
+          <View style={{ marginTop: 16 }}>
+            <Boton texto="Cerrar" onPress={onCerrar} />
+          </View>
+        </View>
+      ) : null}
+    </Modal>
+  )
+}
+
+/** Selector de banco con logo (insignia) al lado de cada uno. */
+function SelectorBanco({
+  bancos,
+  valor,
+  onCambiar,
+}: {
+  bancos: { codigo: string; nombre: string }[]
+  valor: string | null
+  onCambiar: (codigo: string) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const sel = bancos.find((b) => b.codigo === valor)
+  const q = busca.trim().toLowerCase()
+  const filtrados = q ? bancos.filter((b) => b.nombre.toLowerCase().includes(q) || b.codigo.includes(q)) : bancos
+  return (
+    <View>
+      <Text style={est.selLbl}>Banco</Text>
+      <Pressable
+        onPress={() => {
+          setBusca('')
+          setAbierto(true)
+        }}
+        style={est.selCampo}
+      >
+        {sel ? <LogoBanco codigo={sel.codigo} size={26} /> : null}
+        <Text style={[est.selTxt, !sel && { color: color.text4 }]} numberOfLines={1}>
+          {sel ? sel.nombre : 'Selecciona el banco'}
+        </Text>
+        <Text style={{ color: color.text3, fontSize: 12 }}>▾</Text>
+      </Pressable>
+      <Modal abierto={abierto} onCerrar={() => setAbierto(false)} titulo="Selecciona el banco">
+        <View>
+          <Campo placeholder="Buscar banco…" value={busca} onChangeText={setBusca} autoCapitalize="none" style={{ marginBottom: 10 }} />
+          <ScrollView style={{ maxHeight: 380 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {filtrados.map((b) => (
+              <Pressable
+                key={b.codigo}
+                onPress={() => {
+                  onCambiar(b.codigo)
+                  setAbierto(false)
+                }}
+                style={est.selItem}
+              >
+                <LogoBanco codigo={b.codigo} size={34} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={est.selItemNom} numberOfLines={1}>
+                    {b.nombre}
+                  </Text>
+                  <Text style={est.selItemCod}>Código {b.codigo}</Text>
+                </View>
+                {b.codigo === valor ? <Text style={{ color: color.primary, fontWeight: '800' }}>✓</Text> : null}
+              </Pressable>
+            ))}
+            {filtrados.length === 0 ? <Text style={[est.ayuda, { textAlign: 'center', padding: 20 }]}>Sin resultados</Text> : null}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -392,7 +496,7 @@ function ModalAgregarPago({
 }) {
   const { user } = useAuth()
   const { avisar } = useToast()
-  const [bancos, setBancos] = useState<OpcionDrop[]>([])
+  const [bancos, setBancos] = useState<{ codigo: string; nombre: string }[]>([])
   const [banco, setBanco] = useState<string | null>(null)
   const [alias, setAlias] = useState('')
   const [telefono, setTelefono] = useState('')
@@ -408,9 +512,12 @@ function ModalAgregarPago({
       .bancos()
       .then((r) => {
         const arr = ((r as any)?.data ?? []) as { codigo: string; nombre: string }[]
-        setBancos(arr.map((b) => ({ valor: b.codigo, texto: `${b.codigo} · ${b.nombre}` })))
+        const lista = arr.length
+          ? arr.map((b) => ({ codigo: String(b.codigo).padStart(4, '0'), nombre: bancoInfo(b.codigo, b.nombre).nombre }))
+          : BANCOS_VE.map((b) => ({ codigo: b.codigo, nombre: b.nombre }))
+        setBancos(lista)
       })
-      .catch(() => setBancos([]))
+      .catch(() => setBancos(BANCOS_VE.map((b) => ({ codigo: b.codigo, nombre: b.nombre }))))
     // Prefill documento + teléfono del empleado (documento no editable, como la web).
     if (user) {
       userApi
@@ -469,7 +576,7 @@ function ModalAgregarPago({
   return (
     <Modal abierto={abierto} onCerrar={onCerrar} titulo="Nuevo método de retiro" subtitulo="Cuenta de Pago Móvil para tus comisiones">
       <View style={{ gap: 14 }}>
-        <Dropdown etiqueta="Banco" placeholder="Selecciona el banco" opciones={bancos} valor={banco} onCambiar={setBanco} />
+        <SelectorBanco bancos={bancos} valor={banco} onCambiar={setBanco} />
         <Campo etiqueta="Alias" placeholder="Ej: PrincipalBDV" value={alias} onChangeText={setAlias} autoCapitalize="none" />
         <Campo etiqueta="Teléfono" placeholder="04141234567" keyboardType="phone-pad" value={telefono} onChangeText={setTelefono} />
         <Campo etiqueta="Documento (RIF / Cédula)" value={documento} editable={false} />
@@ -540,8 +647,29 @@ const est = StyleSheet.create({
   datoEtiqueta: { fontSize: 12, color: color.text3 },
   datoValor: { fontSize: 12.5, fontWeight: '600', color: color.text, flexShrink: 1, textAlign: 'right' },
   ayuda: { fontSize: 12.5, color: color.text3, lineHeight: 18 },
-  pagoAlias: { fontSize: 13.5, fontWeight: '800', color: color.primaryDark, marginBottom: 4 },
-  pagoLinea: { fontSize: 12.5, color: color.text2 },
+  pagoAlias: { fontSize: 13.5, fontWeight: '800', color: color.primaryDark, marginBottom: 2 },
+  pagoLinea: { fontSize: 12, color: color.text3, marginTop: 2 },
+  pagoCard: { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pagoBanco: { fontSize: 12.5, fontWeight: '600', color: color.text2 },
+  verDet: { fontSize: 20, color: color.text4, fontWeight: '400' },
+  detBanco: { fontSize: 15, fontWeight: '800', color: color.text, textAlign: 'center' },
+  detCod: { fontSize: 11.5, color: color.text3, fontFamily: fuenteMono },
+  selLbl: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
+  selCampo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: color.borderInput,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: color.white,
+  },
+  selTxt: { flex: 1, fontSize: 13.5, color: color.text },
+  selItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.borderSoft },
+  selItemNom: { fontSize: 13.5, fontWeight: '700', color: color.text },
+  selItemCod: { fontSize: 11, color: color.text3, marginTop: 1, fontFamily: fuenteMono },
   linkBox: { alignSelf: 'stretch', backgroundColor: color.bgCard, borderRadius: 10, borderWidth: 1, borderColor: color.borderSoft, padding: 12 },
   linkTxt: { fontSize: 12, color: color.text2 },
 })
