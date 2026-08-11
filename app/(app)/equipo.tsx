@@ -116,22 +116,32 @@ export default function Equipo() {
     if (__DEV__) {
       console.log('[EQUIPO] jerarquía params=', JSON.stringify(params), '→ kioscos:', datos.kiosks?.length ?? 'n/a', '· distribuidores:', datos.distributors?.length ?? 'n/a')
     }
-    // Fallback: si el filtro numérico de la jerarquía no trae el nivel creable, probamos
-    // por UUID y por id numérico directo (posible desajuste id/uuid o consistencia eventual).
+    // Fallback + diagnóstico: si el filtro numérico de la jerarquía no trae el nivel creable,
+    // probamos por UUID y por id numérico directo, y registramos qué devuelve cada uno.
+    const dbg: any = {}
     if (user) {
       const uuid = actorUuid(user)
       try {
         if (user.role === 'DISTRIBUIDOR' && (datos.kiosks?.length ?? 0) === 0) {
+          // ¿Qué distribuidor resuelve el UUID? (para ver si el id numérico es el correcto)
+          if (uuid) {
+            const d: any = await userApi.distribuidorByUuid(uuid).catch(() => null)
+            dbg.dId = d?.id
+            dbg.dNom = String(d?.nombre ?? '').slice(0, 10)
+          }
           for (const clave of [uuid, user.distributorEntityId].filter(Boolean)) {
+            const esUuid = String(clave).length > 20
             try {
               const rk: any = await userApi.kioscosPorDistribuidor(clave as string | number)
               const arr = (rk?.data ?? rk ?? []) as any[]
+              dbg[esUuid ? 'kU' : 'kN'] = Array.isArray(arr) ? arr.length : `t:${typeof arr}`
               if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') →', Array.isArray(arr) ? `${arr.length} kioscos` : typeof arr)
               if (Array.isArray(arr) && arr.length) {
                 datos.kiosks = arr
                 break
               }
             } catch (e) {
+              dbg[esUuid ? 'kU' : 'kN'] = `E${(e as any)?.status ?? ''}`
               if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') ERROR', String(e))
             }
           }
@@ -144,6 +154,7 @@ export default function Equipo() {
         /* best-effort */
       }
     }
+    ;(datos as any)._dbg = dbg
     return datos
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [
@@ -272,7 +283,9 @@ export default function Equipo() {
             user?.distributorEntityId ?? user?.officeEntityId ?? user?.barecaEntityId,
           )} · uuid=${(user ? actorUuid(user) : null)?.slice(0, 8) ?? '-'} · kioscos=${
             datos?.kiosks?.length ?? 'n/a'
-          } · distr=${datos?.distributors?.length ?? 'n/a'}`}
+          }\ndId=${(datos as any)?._dbg?.dId ?? '-'} (${(datos as any)?._dbg?.dNom ?? ''}) · kU=${
+            (datos as any)?._dbg?.kU ?? '-'
+          } · kN=${(datos as any)?._dbg?.kN ?? '-'}`}
         </Text>
       ) : null}
 
