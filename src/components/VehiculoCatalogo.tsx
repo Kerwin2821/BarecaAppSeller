@@ -139,7 +139,11 @@ export function VehiculoCatalogo({
       setModeloId(''); setVersionId(''); setModelos([]); setVersiones([])
       setModeloManual(false); setVersionManual(false); setAnioNoDisp(false)
       if (!id) return
-      catalogoApi.modelos(id, anioParam()).then((r) => setModelos(desenv(r))).catch(() => undefined)
+      ;(async () => {
+        let mos = desenv(await catalogoApi.modelos(id, anioParam()).catch(() => []))
+        if (mos.length === 0) mos = desenv(await catalogoApi.modelos(id).catch(() => []))
+        setModelos(mos)
+      })()
     },
     [entrarManualMarca, anioParam],
   )
@@ -156,7 +160,11 @@ export function VehiculoCatalogo({
       setModeloManual(false); setModeloId(id)
       setVersionId(''); setVersiones([]); setVersionManual(false); setAnioNoDisp(false)
       if (!id) return
-      catalogoApi.versiones(id, anioParam()).then((r) => setVersiones(desenv(r))).catch(() => undefined)
+      ;(async () => {
+        let vs = desenv(await catalogoApi.versiones(id, anioParam()).catch(() => []))
+        if (vs.length === 0) vs = desenv(await catalogoApi.versiones(id).catch(() => []))
+        setVersiones(vs)
+      })()
     },
     [entrarManualModelo, anioParam],
   )
@@ -221,13 +229,17 @@ export function VehiculoCatalogo({
         const m = match(ms, prefill.marca)
         if (m) {
           setMarcaId(m.id)
-          const mos = desenv(await catalogoApi.modelos(m.id, y))
+          // Años viejos (p.ej. 1997) a veces no tienen modelos con filtro de año:
+          // si viene vacío, reintenta sin año para poder autoseleccionar el modelo.
+          let mos = desenv(await catalogoApi.modelos(m.id, y))
+          if (mos.length === 0) mos = desenv(await catalogoApi.modelos(m.id))
           if (!vivo) return
           setModelos(mos)
           const mo = match(mos, prefill.modelo)
           if (mo) {
             setModeloId(mo.id)
-            const vs = desenv(await catalogoApi.versiones(mo.id, y))
+            let vs = desenv(await catalogoApi.versiones(mo.id, y))
+            if (vs.length === 0) vs = desenv(await catalogoApi.versiones(mo.id))
             if (!vivo) return
             setVersiones(vs) // marca+modelo del catálogo; el vendedor elige la versión
           }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import * as Location from 'expo-location'
@@ -316,30 +316,28 @@ export function PasoCliente({
     geoApi.ciudades(id).then((r) => setCiudades(aGeo(r))).catch(() => undefined).finally(() => setCarga('ciu', false))
   }, [])
 
-  // Autoselección de estado/municipio/ciudad por GPS (reverse geocoding).
+  // Autoselección de estado/municipio/ciudad por GPS (reverse geocoding), en
+  // silencio: se dispara sola al llegar a la pantalla. El único diálogo posible
+  // es el permiso del sistema operativo (obligatorio), y solo la primera vez.
   const [ubicando, setUbicando] = useState(false)
+  const ubicadoRef = useRef(false)
   const ubicarPorGps = useCallback(async () => {
     setUbicando(true)
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== 'granted') {
-        avisar('Permiso de ubicación denegado.', 'error')
-        return
+      // Si ya está concedido, NO vuelve a pedir permiso; si no, lo pide una vez.
+      let perm = await Location.getForegroundPermissionsAsync()
+      if (perm.status !== 'granted' && perm.canAskAgain) {
+        perm = await Location.requestForegroundPermissionsAsync()
       }
+      if (perm.status !== 'granted') return // sin permiso → se elige a mano, sin molestar
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
       const geo = (await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }))?.[0]
-      if (!geo) {
-        avisar('No se pudo determinar la ubicación.', 'error')
-        return
-      }
+      if (!geo) return
       const nEstado = geo.region ?? ''
       const nMunicipio = geo.subregion ?? geo.district ?? ''
       const nCiudad = geo.city ?? geo.district ?? ''
       const est = matchGeo(estados, nEstado)
-      if (!est) {
-        avisar(`No ubicamos el estado detectado${nEstado ? ` ("${nEstado}")` : ''}. Selecciónalo a mano.`, 'info')
-        return
-      }
+      if (!est) return
       set('estadoId', est.id)
       set('municipioId', null)
       set('ciudadId', null)
@@ -353,13 +351,20 @@ export function PasoCliente({
       const ciu = matchGeo(ciuds, nCiudad) ?? matchGeo(ciuds, nMunicipio)
       if (mun) set('municipioId', mun.id)
       if (ciu) set('ciudadId', ciu.id)
-      avisar(`📍 ${est.nombre}${mun ? ` · ${mun.nombre}` : ''}${ciu ? ` · ${ciu.nombre}` : ''}`, 'ok')
-    } catch (e) {
-      avisar(mensajeDeError(e), 'error')
+    } catch {
+      /* silencioso: la dirección se puede elegir a mano */
     } finally {
       setUbicando(false)
     }
-  }, [estados, avisar])
+  }, [estados])
+
+  // Al cargar los estados, intenta ubicar automáticamente (una sola vez y solo si
+  // el vendedor no eligió aún un estado).
+  useEffect(() => {
+    if (ubicadoRef.current || estados.length === 0 || d.estadoId) return
+    ubicadoRef.current = true
+    void ubicarPorGps()
+  }, [estados, d.estadoId, ubicarPorGps])
 
   const listo =
     d.cedula.trim().length >= 5 &&
@@ -530,11 +535,10 @@ export function PasoCliente({
       ) : null}
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={[est.titulo, { flex: 1 }]}>Dirección del Asegurado</Text>
-          <Boton texto={ubicando ? 'Ubicando…' : '📍 Mi ubicación'} variante="soft" onPress={ubicarPorGps} cargando={ubicando} style={{ paddingVertical: 8, paddingHorizontal: 12 }} />
-        </View>
-        <Text style={est.hint}>Toca “Mi ubicación” para autoseleccionar estado, municipio y ciudad por GPS.</Text>
+        <Text style={est.titulo}>Dirección del Asegurado</Text>
+        <Text style={est.hint}>
+          {ubicando ? '📍 Detectando tu ubicación…' : 'Estado, municipio y ciudad se completan por GPS; puedes corregirlos.'}
+        </Text>
         <Dropdown etiqueta="Estado" placeholder="Selecciona un estado" opciones={aOpc(estados)} valor={d.estadoId ? String(d.estadoId) : null} onCambiar={elegirEstado} cargando={cargando.estados} />
         <Dropdown etiqueta="Municipio" placeholder="Selecciona un municipio" opciones={aOpc(municipios)} valor={d.municipioId ? String(d.municipioId) : null} onCambiar={(v) => set('municipioId', Number(v))} cargando={cargando.mun} deshabilitado={!d.estadoId} />
         <Dropdown etiqueta="Ciudad" placeholder="Selecciona una ciudad" opciones={aOpc(ciudades)} valor={d.ciudadId ? String(d.ciudadId) : null} onCambiar={(v) => set('ciudadId', Number(v))} cargando={cargando.ciu} deshabilitado={!d.estadoId} />
