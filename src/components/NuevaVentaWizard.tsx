@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { funerarioApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
+import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
 import { ApiException, mensajeDeError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import {
@@ -163,6 +163,26 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [apov, setApov] = useState<any>(null)
   const [apovCargando, setApovCargando] = useState(false)
   const [gruaOn, setGruaOn] = useState(false)
+  // Servicios adicionales que ofrece la aseguradora (Asistencia / Grúa por grupo).
+  const [asistenciaOn, setAsistenciaOn] = useState(false)
+  const [serviciosCfg, setServiciosCfg] = useState<any[]>([])
+  const [gruaOfrecida, setGruaOfrecida] = useState(false)
+  const [gruaPrima, setGruaPrima] = useState(0) // en la moneda del plan (EUR)
+  const [tasa, setTasa] = useState<{ EUR: number; USD: number }>({ EUR: 0, USD: 0 })
+
+  /** proveedorId (UUID) del producto seleccionado, como en la cotización. */
+  const proveedorIdSel = useMemo(() => {
+    const prod = productos.find((p) => p.productoId === productoId)
+    return proveedores.find((p) => p.id === prod?.proveedor?.id)?.proveedorId ?? prod?.proveedor?.proveedorId ?? ''
+  }, [productos, productoId, proveedores])
+
+  // Tasa BCV (para convertir grúa/asistencia y el monto base a Bs).
+  useEffect(() => {
+    Promise.all([
+      paymentApi.convertirMoneda(1, 'EUR', 'VES').catch(() => null),
+      paymentApi.convertirMoneda(1, 'USD', 'VES').catch(() => null),
+    ]).then(([e, u]) => setTasa({ EUR: (e as any)?.data ?? 0, USD: (u as any)?.data ?? 0 }))
+  }, [])
 
   useEffect(() => {
     if (!apovOn) {
@@ -174,14 +194,48 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     let vivo = true
     setApovCargando(true)
     rcvApi
-      .apov(n)
+      .apov(n, proveedorIdSel || undefined)
       .then((r) => vivo && setApov(r?.data ?? r))
       .catch(() => vivo && setApov(null))
       .finally(() => vivo && setApovCargando(false))
     return () => {
       vivo = false
     }
-  }, [apovOn, puestos])
+  }, [apovOn, puestos, proveedorIdSel])
+
+  // Al seleccionar plan: carga servicios ofrecidos + prima de grúa por grupo.
+  useEffect(() => {
+    if (planIdx === null || !proveedorIdSel) {
+      setServiciosCfg([])
+      setGruaOfrecida(false)
+      setGruaPrima(0)
+      return
+    }
+    let vivo = true
+    rcvApi
+      .serviciosOfrecidos(proveedorIdSel)
+      .then((r) => {
+        if (!vivo) return
+        const list = (Array.isArray(r) ? r : ((r as any)?.data ?? [])) as any[]
+        setServiciosCfg(list.filter((x) => String(x.servicioCodigo).toUpperCase() !== 'GRUA'))
+        setGruaOfrecida(list.some((x) => String(x.servicioCodigo).toUpperCase() === 'GRUA' && x.ofrece !== false))
+      })
+      .catch(() => undefined)
+    if (grupoId) {
+      rcvApi
+        .gruaTarifas(proveedorIdSel)
+        .then((r) => {
+          if (!vivo) return
+          const tarifas = (Array.isArray(r) ? r : ((r as any)?.data ?? [])) as any[]
+          const t = tarifas.find((x) => String(x.grupoId).toLowerCase() === String(grupoId).toLowerCase())
+          setGruaPrima(Number(t?.prima) || 0)
+        })
+        .catch(() => undefined)
+    }
+    return () => {
+      vivo = false
+    }
+  }, [planIdx, proveedorIdSel, grupoId])
 
   const [cliente, setCliente] = useState<DatosCliente | null>(null)
   const [conductorTipo, setConductorTipo] = useState<'tomador' | 'otro'>('tomador')
@@ -228,12 +282,15 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
       apovOn,
       apov,
       puestos: Number(puestos) || 5,
-      gruaOn,
+      gruaOn: gruaOn && gruaOfrecida,
+      valorAsistencia:
+        asistenciaOn ? Number(serviciosCfg.find((x) => String(x.servicioCodigo).toUpperCase() === 'ASISTENCIA')?.prima) || 0 : 0,
+      valorGruaAdicional: gruaOn && gruaOfrecida ? gruaPrima : 0,
       planFun: planFunSel,
       planTipoFun,
       beneficiarios: Number(beneficiarios) || 1,
     }),
-    [tipo, user, productoId, grupoId, productos, proveedores, planes, planIdx, cliente, conductorTipo, conductor, apovOn, apov, puestos, gruaOn, planFunSel, planTipoFun, beneficiarios],
+    [tipo, user, productoId, grupoId, productos, proveedores, planes, planIdx, cliente, conductorTipo, conductor, apovOn, apov, puestos, gruaOn, gruaOfrecida, gruaPrima, asistenciaOn, serviciosCfg, planFunSel, planTipoFun, beneficiarios],
   )
 
   // Al entrar al paso de pago, carga tasas/bancos/gateways y el total con comisión.
@@ -283,6 +340,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     setApovOn(false)
     setApov(null)
     setGruaOn(false)
+    setAsistenciaOn(false)
     setCliente(null)
     setConductorTipo('tomador')
     setConductor({ tipoDoc: 'V', cedula: '', nombres: '', apellidos: '', telefono: '' })
@@ -370,6 +428,23 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const esFunerario = tipo === 'funerario'
   const pasosVisibles = esFunerario ? ['Cotización', 'Datos del Cliente', 'Registro de Pago'] : PASOS
   const pasoVisibleIdx = esFunerario && paso === 3 ? 2 : paso
+
+  // Adicionales del paso de cotización (base × tasa BCV + APOV + asistencia + grúa).
+  const planSelRcv = planIdx !== null ? planes[planIdx] : null
+  const simboloPlan = planSelRcv?.simbolo || 'EUR'
+  const ratePlan = tasa[simboloPlan as 'EUR' | 'USD'] || tasa.EUR || 0
+  const asistCfg = serviciosCfg.find((x) => String(x.servicioCodigo).toUpperCase() === 'ASISTENCIA')
+  const asistPrima = asistCfg ? Number(asistCfg.prima) || 0 : 0
+  const baseBsRcv = (() => {
+    const b = bsDePlan(planSelRcv)
+    if (b > 0) return b
+    const tcr = planSelRcv?.primaAnualTCR ?? planSelRcv?.finalPrice ?? planSelRcv?.prima ?? 0
+    return typeof tcr === 'number' ? tcr * ratePlan : 0
+  })()
+  const apovBs = apovOn && apov ? (apov.primaFinalTotal ?? 0) : 0
+  const asistBs = asistenciaOn && asistCfg ? asistPrima * ratePlan : 0
+  const gruaBs = gruaOn && gruaOfrecida ? gruaPrima * ratePlan : 0
+  const totalAdicRcv = baseBsRcv + apovBs + asistBs + gruaBs
 
   // Totales para el paso de pago (base × tasa BCV + APOV, como la web).
   const sdActual = construirSaleData()
@@ -582,16 +657,42 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                               ) : null}
                             </Tarjeta>
 
+                            {/* Asistencia en Viajes (si la aseguradora la ofrece) */}
+                            {asistCfg ? (
+                              <Tarjeta style={{ padding: 16, marginTop: 10 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={est.adTitulo}>🛠️ {asistCfg.labelCobertura || 'Asistencia en Viajes'}</Text>
+                                    <Text style={est.hint}>Prima fija: {numero(asistPrima)} {simboloPlan}</Text>
+                                  </View>
+                                  <Switch value={asistenciaOn} onValueChange={setAsistenciaOn} trackColor={{ true: color.primary, false: '#CBD5E1' }} thumbColor="#fff" />
+                                </View>
+                              </Tarjeta>
+                            ) : null}
+
+                            {/* Grúa (solo si el proveedor la ofrece por grupo; Caroní no) */}
+                            {gruaOfrecida && gruaPrima > 0 ? (
+                              <Tarjeta style={{ padding: 16, marginTop: 10 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={est.adTitulo}>🚚 Grúa</Text>
+                                    <Text style={est.hint}>Prima fija: {numero(gruaPrima)} {simboloPlan}</Text>
+                                  </View>
+                                  <Switch value={gruaOn} onValueChange={setGruaOn} trackColor={{ true: color.primary, false: '#CBD5E1' }} thumbColor="#fff" />
+                                </View>
+                              </Tarjeta>
+                            ) : null}
+
                             {/* Total estimado */}
                             <Tarjeta style={est.totalEstimado}>
-                              <FilaResumen k={`Plan (${planes[planIdx]?.grupo?.descripcion ?? 'RCV'})`} v={moneda(bsDePlan(planes[planIdx]), 'Bs.')} />
-                              {apovOn && apov ? <FilaResumen k="+ APOV" v={moneda(apov.primaFinalTotal ?? 0, 'Bs.')} /> : null}
+                              <FilaResumen k={`Plan (${planes[planIdx]?.grupo?.descripcion ?? 'RCV'})`} v={moneda(baseBsRcv, 'Bs.')} />
+                              {apovBs > 0 ? <FilaResumen k="+ APOV" v={moneda(apovBs, 'Bs.')} /> : null}
+                              {asistBs > 0 ? <FilaResumen k="+ Asistencia" v={moneda(asistBs, 'Bs.')} /> : null}
+                              {gruaBs > 0 ? <FilaResumen k="+ Grúa" v={moneda(gruaBs, 'Bs.')} /> : null}
                               <View style={est.totalDivider} />
                               <View style={est.apovFila}>
                                 <Text style={est.totalEstK}>Total estimado</Text>
-                                <Text style={est.totalEstV}>
-                                  {moneda(bsDePlan(planes[planIdx]) + (apovOn && apov ? (apov.primaFinalTotal ?? 0) : 0), 'Bs.')}
-                                </Text>
+                                <Text style={est.totalEstV}>{moneda(totalAdicRcv, 'Bs.')}</Text>
                               </View>
                             </Tarjeta>
                           </>

@@ -170,9 +170,15 @@ export const rcvApi = {
       `/policies/tarifa-coberturas/tarifa-by-grupo/${encodeURIComponent(grupoId)}/${encodeURIComponent(productoId)}/${encodeURIComponent(proveedorId)}/TRUE`,
       { sinCierre: true },
     ),
-  /** Cálculo de APOV (RCV Ocupantes) por cantidad de puestos. */
-  apov: (cantidadPuestos: number) =>
-    bff<any>('/policies/cobertura-items/calcularApov', { params: { cantidadPuestos }, sinCierre: true }),
+  /** Cálculo de APOV (RCV Ocupantes) por cantidad de puestos (por aseguradora). */
+  apov: (cantidadPuestos: number, proveedorId?: string) =>
+    bff<any>('/policies/cobertura-items/calcularApov', { params: { cantidadPuestos, proveedorId }, sinCierre: true }),
+  /** Servicios adicionales que ofrece la aseguradora (Asistencia / Grúa). */
+  serviciosOfrecidos: (proveedorId: string) =>
+    bff<any[]>('/policies/servicios-config/ofrecidos', { params: { proveedorId }, sinCierre: true }),
+  /** Primas de grúa por grupo de la aseguradora (Estar / La Occidental; Caroní no). */
+  gruaTarifas: (proveedorId: string) =>
+    bff<any[]>('/policies/grua-tarifas/by-proveedor', { params: { proveedorId }, sinCierre: true }),
 }
 
 // ── Casco: planes con prima (público, para Nueva Venta) ─────

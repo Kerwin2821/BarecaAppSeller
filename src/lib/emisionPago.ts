@@ -75,6 +75,9 @@ export interface SaleDataVenta {
   apov: any
   puestos: number
   gruaOn: boolean
+  /** Primas de servicios adicionales en la moneda del plan (para el order payload). */
+  valorAsistencia?: number
+  valorGruaAdicional?: number
   // Funerario
   planFun?: any
   planTipoFun?: 'individual' | 'familiar'
@@ -482,6 +485,8 @@ export function useEmisionPago() {
       volarApovInvalidez: sd.apov?.invalidez ?? 0,
       volarApovMedicos: sd.apov?.gastosMedicos ?? 0,
       volarApovFunerario: sd.apov?.servicioFunerarios ?? 0,
+      valorAsistencia: sd.valorAsistencia ?? 0,
+      valorGruaAdicional: sd.valorGruaAdicional ?? 0,
       collectionGateway: gateway,
       isBancoPlaza: gateway === 'PLAZA',
     }
