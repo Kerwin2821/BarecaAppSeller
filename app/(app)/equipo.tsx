@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { teamApi, userApi } from '@/lib/endpoints'
@@ -109,17 +110,31 @@ export default function Equipo() {
   const nuevoRol = rolCreable(user?.role)
 
   const cargar = useCallback(async () => {
-    const r = await userApi.teamHierarchy(paramsJerarquia(user))
+    const params = paramsJerarquia(user)
+    const r = await userApi.teamHierarchy(params)
     const datos = (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
-    // Fallback por UUID si el filtro numérico de la jerarquía no trae el nivel que
-    // el usuario acaba de crear (posible desajuste id/uuid o consistencia eventual).
+    if (__DEV__) {
+      console.log('[EQUIPO] jerarquía params=', JSON.stringify(params), '→ kioscos:', datos.kiosks?.length ?? 'n/a', '· distribuidores:', datos.distributors?.length ?? 'n/a')
+    }
+    // Fallback: si el filtro numérico de la jerarquía no trae el nivel creable, probamos
+    // por UUID y por id numérico directo (posible desajuste id/uuid o consistencia eventual).
     if (user) {
       const uuid = actorUuid(user)
       try {
-        if (user.role === 'DISTRIBUIDOR' && (datos.kiosks?.length ?? 0) === 0 && uuid) {
-          const rk: any = await userApi.kioscosPorDistribuidor(uuid)
-          const arr = (rk?.data ?? rk ?? []) as any[]
-          if (Array.isArray(arr) && arr.length) datos.kiosks = arr
+        if (user.role === 'DISTRIBUIDOR' && (datos.kiosks?.length ?? 0) === 0) {
+          for (const clave of [uuid, user.distributorEntityId].filter(Boolean)) {
+            try {
+              const rk: any = await userApi.kioscosPorDistribuidor(clave as string | number)
+              const arr = (rk?.data ?? rk ?? []) as any[]
+              if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') →', Array.isArray(arr) ? `${arr.length} kioscos` : typeof arr)
+              if (Array.isArray(arr) && arr.length) {
+                datos.kiosks = arr
+                break
+              }
+            } catch (e) {
+              if (__DEV__) console.log('[EQUIPO] kioscosPorDistribuidor(', clave, ') ERROR', String(e))
+            }
+          }
         } else if (user.role === 'OFICINA_REGIONAL' && (datos.distributors?.length ?? 0) === 0 && uuid) {
           const rd: any = await userApi.distribuidoresPorOficina(uuid)
           const arr = (rd?.data ?? rd ?? []) as any[]
@@ -162,6 +177,43 @@ export default function Equipo() {
     [baseFor, extras],
   )
   const lista: any[] = useMemo(() => mergedFor(tab), [mergedFor, tab])
+
+  // Persistencia de las entidades recién creadas: se guardan por usuario para que
+  // NO desaparezcan al salir y volver a entrar (el backend puede tardar en reflejarlas).
+  const keyExtras = user?.loginId ? `equipo.extras.${user.loginId}` : null
+  const hidratado = useRef(false)
+  useEffect(() => {
+    if (!keyExtras) return
+    AsyncStorage.getItem(keyExtras)
+      .then((s) => {
+        if (s) {
+          try {
+            const arr = JSON.parse(s)
+            if (Array.isArray(arr)) setExtras(arr)
+          } catch {
+            /* ignore */
+          }
+        }
+        hidratado.current = true
+      })
+      .catch(() => {
+        hidratado.current = true
+      })
+  }, [keyExtras])
+  useEffect(() => {
+    if (!keyExtras || !hidratado.current) return
+    AsyncStorage.setItem(keyExtras, JSON.stringify(extras)).catch(() => undefined)
+  }, [extras, keyExtras])
+  // Poda los locales que el backend ya devuelve (por documento), para no dejar "Sincronizando…" eterno.
+  useEffect(() => {
+    setExtras((prev) => {
+      const podado = prev.filter((x) => {
+        const docs = new Set(baseFor(x.tab).map((b: any) => String(b?.numeroDocumento ?? '').toLowerCase()).filter(Boolean))
+        return !docs.has(String(x.e?.numeroDocumento ?? '').toLowerCase())
+      })
+      return podado.length === prev.length ? prev : podado
+    })
+  }, [datos, baseFor])
 
   // Búsqueda por Nombre o Documento (client-side, como la web).
   const filtrados = useMemo(() => {
