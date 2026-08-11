@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { teamApi, userApi } from '@/lib/endpoints'
 import { mensajeDeError } from '@/lib/api'
 import { actorUuid, etiquetaRol } from '@/lib/roles'
-import { fechaCorta } from '@/lib/formato'
+import { fechaCorta, fechaHora } from '@/lib/formato'
+import { compartirCSV, compartirPDF, htmlReporte, type Celda } from '@/lib/exportar'
 import type { CurrentUser, UserRole } from '@/lib/tipos'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
@@ -22,6 +23,15 @@ function rolCreable(rol: UserRole | null | undefined): UserRole | null {
   if (rol === 'OFICINA_REGIONAL') return 'DISTRIBUIDOR'
   if (rol === 'DISTRIBUIDOR') return 'KIOSCO'
   return null
+}
+
+/** Etiqueta de entidad (entityType del payload unificado). */
+const ENTIDAD_LABEL: Record<string, string> = {
+  OFICINA_REGIONAL: 'Oficina Regional',
+  DISTRIBUIDOR: 'Distribuidor',
+  KIOSCO: 'Kiosco',
+  BARECA: 'Bareca',
+  EMPLEADO: 'Empleado',
 }
 
 /** Pestañas visibles por rol (viewableTeamTabs del AuthService del portal). */
@@ -50,19 +60,48 @@ function paramsJerarquia(user: CurrentUser | null): Record<string, string | numb
   return p
 }
 
+const val = (e: any, k: string): Celda => k.split('.').reduce((a: any, p) => (a ? a[p] : null), e)
+
+/** Cabeceras + claves de export por pestaña (idénticas a downloadReport de la web). */
+function configExport(tab: Tab): { headers: string[]; keys: string[]; nombre: string } {
+  switch (tab) {
+    case 'offices':
+      return { headers: ['Nombre', 'RIF', 'Email', 'Teléfono'], keys: ['nombre', 'numeroDocumento', 'correo', 'telefonoCelular'], nombre: 'reporte_oficinas' }
+    case 'distributors':
+      return {
+        headers: ['Nombre', 'RIF', 'Email', 'Teléfono', 'Oficina Regional'],
+        keys: ['nombre', 'numeroDocumento', 'correo', 'telefonoCelular', 'oficinasRegionales.nombre'],
+        nombre: 'reporte_distribuidores',
+      }
+    case 'kiosks':
+      return {
+        headers: ['Nombre', 'Documento', 'Email', 'Teléfono', 'Distribuidor'],
+        keys: ['nombre', 'numeroDocumento', 'correo', 'telefonoCelular', 'distribuidores.nombre'],
+        nombre: 'reporte_kioscos',
+      }
+    default:
+      return {
+        headers: ['Nombres', 'Apellidos', 'Documento', 'Email', 'Teléfono'],
+        keys: ['nombres', 'apellidos', 'numeroDocumento', 'correo', 'telefono'],
+        nombre: 'reporte_empleados',
+      }
+  }
+}
+
 export default function Equipo() {
   const { user } = useAuth()
+  const { avisar } = useToast()
   const tabs = useMemo(() => tabsPorRol(user?.role), [user?.role])
   const [tab, setTab] = useState<Tab>(tabs[0]?.id ?? 'kiosks')
   const [crearAbierto, setCrearAbierto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const [exportando, setExportando] = useState<'csv' | 'pdf' | null>(null)
   const nuevoRol = rolCreable(user?.role)
 
   const cargar = useCallback(async () => {
     const r = await userApi.teamHierarchy(paramsJerarquia(user))
-    // El BFF puede envolver en {data} o devolver el objeto directo.
     return (r?.data ?? r) as { offices?: any[]; distributors?: any[]; kiosks?: any[]; employees?: any[] }
   }, [user])
-  // Re-carga cuando el enriquecimiento trae el id numérico del ente (antes es undefined).
   const { datos, cargando, error, recargar } = useApi(cargar, [
     user?.loginId,
     user?.barecaEntityId,
@@ -79,12 +118,54 @@ export default function Equipo() {
     return datos.employees ?? []
   }, [datos, tab])
 
+  // Búsqueda por Nombre o Documento (client-side, como la web).
+  const filtrados = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    if (!q) return lista
+    return lista.filter((e) => {
+      const nombre = (e.nombre || `${e.nombres ?? ''} ${e.apellidos ?? ''}`).toLowerCase()
+      const doc = String(e.numeroDocumento ?? '').toLowerCase()
+      return nombre.includes(q) || doc.includes(q)
+    })
+  }, [lista, busca])
+
   const cuenta = (t: Tab): number => {
     if (!datos) return 0
     if (t === 'offices') return datos.offices?.length ?? 0
     if (t === 'distributors') return datos.distributors?.length ?? 0
     if (t === 'kiosks') return datos.kiosks?.length ?? 0
     return datos.employees?.length ?? 0
+  }
+  const tabLabel = tabs.find((t) => t.id === tab)?.label ?? ''
+
+  const exportar = async (tipo: 'csv' | 'pdf') => {
+    if (exportando) return
+    if (filtrados.length === 0) {
+      avisar('No hay datos para exportar con la búsqueda actual.', 'info')
+      return
+    }
+    setExportando(tipo)
+    try {
+      const cfg = configExport(tab)
+      const filas: Celda[][] = filtrados.map((e) => cfg.keys.map((k) => val(e, k) ?? ''))
+      if (tipo === 'csv') {
+        await compartirCSV([cfg.headers, ...filas], cfg.nombre)
+      } else {
+        await compartirPDF(
+          htmlReporte({
+            titulo: `Gestión de Equipo · ${tabLabel}`,
+            meta: `Generado: ${fechaHora(new Date())}  ·  ${filtrados.length} registros`,
+            headers: cfg.headers,
+            filas,
+          }),
+          cfg.nombre,
+        )
+      }
+    } catch (e) {
+      avisar(mensajeDeError(e), 'error')
+    } finally {
+      setExportando(null)
+    }
   }
 
   return (
@@ -96,19 +177,52 @@ export default function Equipo() {
 
       {nuevoRol ? (
         <View style={{ marginBottom: 12 }}>
-          <Boton texto={`+ Crear ${etiquetaRol(nuevoRol)}`} onPress={() => setCrearAbierto(true)} />
+          <Boton texto={`+ Añadir ${etiquetaRol(nuevoRol)} a mi Equipo`} onPress={() => setCrearAbierto(true)} />
         </View>
       ) : null}
 
       <View style={est.tabs}>
         {tabs.map((t) => (
-          <Pressable key={t.id} onPress={() => setTab(t.id)} style={[est.tab, tab === t.id && est.tabActivo]}>
+          <Pressable
+            key={t.id}
+            onPress={() => {
+              setTab(t.id)
+              setBusca('')
+            }}
+            style={[est.tab, tab === t.id && est.tabActivo]}
+          >
             <Text style={{ fontSize: 12, fontWeight: tab === t.id ? '800' : '600', color: tab === t.id ? color.primaryDark : color.text3 }}>
               {t.label}
               {datos ? ` (${cuenta(t.id)})` : ''}
             </Text>
           </Pressable>
         ))}
+      </View>
+
+      {/* Export CSV / PDF */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+        <Boton texto="CSV" variante="mini" cargando={exportando === 'csv'} onPress={() => exportar('csv')} />
+        <Boton texto="PDF" variante="mini" cargando={exportando === 'pdf'} onPress={() => exportar('pdf')} />
+      </View>
+
+      {/* Título + contador + buscador */}
+      <Text style={est.listaTitulo}>
+        {tabLabel} {datos ? `(${cuenta(tab)})` : ''}
+      </Text>
+      <View style={est.buscador}>
+        <Text style={{ fontSize: 14, color: color.text4 }}>⌕</Text>
+        <TextInput
+          placeholder="Buscar por Nombre o Documento…"
+          placeholderTextColor={color.text4}
+          value={busca}
+          onChangeText={setBusca}
+          style={est.buscadorInput}
+        />
+        {busca ? (
+          <Pressable onPress={() => setBusca('')} hitSlop={8}>
+            <Text style={{ fontSize: 14, color: color.text3 }}>✕</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {error ? (
@@ -122,13 +236,13 @@ export default function Equipo() {
             </Tarjeta>
           ))}
         </View>
-      ) : lista.length === 0 ? (
+      ) : filtrados.length === 0 ? (
         <Tarjeta>
-          <EstadoVacio titulo="Sin registros" detalle="No hay entidades en este nivel todavía." />
+          <EstadoVacio titulo="Sin registros" detalle={busca ? 'No hay coincidencias con tu búsqueda.' : 'No hay entidades en este nivel todavía.'} />
         </Tarjeta>
       ) : (
         <View style={{ gap: 12 }}>
-          {lista.map((e, i) => (
+          {filtrados.map((e, i) => (
             <FilaEntidad key={e.id ?? i} e={e} tab={tab} />
           ))}
         </View>
@@ -151,8 +265,9 @@ export default function Equipo() {
 }
 
 /* ══════════════════════════════════════════════════════════
-   Modal: crear entidad del nivel siguiente (unified-create)
+   Modal: crear entidad del nivel siguiente + comisiones por producto
    ══════════════════════════════════════════════════════════ */
+type ItemCom = { productId: string; productName: string; min: number; max: number; on: boolean; pct: string }
 
 function ModalCrearEntidad({
   abierto,
@@ -172,22 +287,62 @@ function ModalCrearEntidad({
   const [numeroDocumento, setNumeroDocumento] = useState('')
   const [correo, setCorreo] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [items, setItems] = useState<ItemCom[]>([])
+  const [cargandoCom, setCargandoCom] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (abierto) {
-      setNombre('')
-      setNumeroDocumento('')
-      setCorreo('')
-      setTelefono('')
-      setError(null)
-      setEnviando(false)
-    }
-  }, [abierto])
+    if (!abierto || !user) return
+    setNombre('')
+    setNumeroDocumento('')
+    setCorreo('')
+    setTelefono('')
+    setError(null)
+    setEnviando(false)
+    setCargandoCom(true)
+    const uuid = actorUuid(user) ?? ''
+    Promise.all([
+      userApi
+        .productos()
+        .then((r: any) => (r?.data ?? r ?? []) as any[])
+        .catch(() => []),
+      uuid
+        ? teamApi
+            .comisionesMinima(user.role, uuid)
+            .then((r: any) => (r?.data ?? r ?? []) as any[])
+            .catch(() => [])
+        : Promise.resolve([]),
+    ])
+      .then(([prods, minima]) => {
+        const caps = new Map<string, { min: number; max: number }>()
+        for (const c of minima) {
+          const pid = c?.productos?.productoId ?? c?.productoId
+          if (pid) caps.set(String(pid).toUpperCase(), { min: c?.comisionMinima ?? 0, max: c?.porcentajeComision ?? 0 })
+        }
+        let base: ItemCom[]
+        if (user.role === 'BARECA') {
+          base = prods
+            .filter((p) => p.productoId)
+            .map((p) => ({ productId: p.productoId, productName: p.nombre ?? p.productoId, min: 0, max: 100, on: true, pct: '' }))
+        } else {
+          base = prods
+            .filter((p) => p.productoId && caps.has(String(p.productoId).toUpperCase()))
+            .map((p) => {
+              const cap = caps.get(String(p.productoId).toUpperCase())!
+              return { productId: p.productoId, productName: p.nombre ?? p.productoId, min: cap.min, max: cap.max, on: true, pct: String(cap.max) }
+            })
+        }
+        setItems(base)
+      })
+      .finally(() => setCargandoCom(false))
+  }, [abierto, user])
+
+  const setItem = (id: string, patch: Partial<ItemCom>) =>
+    setItems((arr) => arr.map((it) => (it.productId === id ? { ...it, ...patch } : it)))
 
   const enviar = async () => {
-    if (enviando) return
+    if (enviando || !user) return
     if (!nombre.trim() || !numeroDocumento.trim()) {
       setError('Completa nombre y documento.')
       return
@@ -196,24 +351,54 @@ function ModalCrearEntidad({
       setError('Ingresa un correo válido: allí se envían las credenciales de acceso.')
       return
     }
+    const activos = items.filter((i) => i.on)
+    for (const it of activos) {
+      const v = Number(it.pct)
+      if (it.pct.trim() === '' || Number.isNaN(v)) {
+        setError(`Indica la comisión de "${it.productName}".`)
+        return
+      }
+      if (v > it.max) {
+        setError(`La comisión de "${it.productName}" no puede superar tu ${it.max}% asignado.`)
+        return
+      }
+      if (v < it.min) {
+        setError(`La comisión de "${it.productName}" no puede ser menor a ${it.min}%.`)
+        return
+      }
+    }
     setEnviando(true)
     setError(null)
     try {
-      // Payload de alta unificada (UserFormOutput del portal). El padre y las
-      // comisiones por producto se resuelven en el backend según el creador.
-      const padreUuid = user ? (actorUuid(user) ?? '') : ''
-      await teamApi.unifiedCreate({
-        role: rol,
+      const formData = {
         nombre: nombre.trim(),
         numeroDocumento: numeroDocumento.trim(),
         email: correo.trim(),
         telefono: telefono.trim(),
+        role: rol,
         comisionPrepagada: false,
-        commissions: [],
-        creadorPor: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || '',
-        creadorUuid: padreUuid,
-        parentId: padreUuid,
-      })
+        commissions: activos.map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          percentage: Number(it.pct),
+          configuredPercentage: it.max,
+          isActive: true,
+        })),
+      }
+      const payload = {
+        entityType: ENTIDAD_LABEL[rol],
+        creatorName: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || '',
+        userRole: user.role,
+        context: { officeId: null, distributorId: null, kioskId: null },
+        formData,
+        currentUserCtx: {
+          barecaId: user.barecaId,
+          oficinaRegionalId: user.oficinaRegionalId,
+          distribuidorId: user.distribuidorId,
+          kioscopuestoId: user.kioskoId,
+        },
+      }
+      await teamApi.unifiedCreate(payload)
       avisar(`${etiquetaRol(rol)} creado. Se enviaron credenciales a ${correo.trim()}.`, 'ok')
       onListo()
     } catch (e) {
@@ -242,20 +427,55 @@ function ModalCrearEntidad({
         onChangeText={setCorreo}
         style={{ marginBottom: 14 }}
       />
-      <Campo
-        etiqueta="Teléfono"
-        placeholder="04120000000"
-        keyboardType="phone-pad"
-        value={telefono}
-        onChangeText={setTelefono}
-      />
+      <Campo etiqueta="Teléfono" placeholder="04120000000" keyboardType="phone-pad" value={telefono} onChangeText={setTelefono} />
 
-      <View style={{ marginTop: 16 }}>
-        <Alerta tipo="info">
-          Las comisiones por producto se heredan de tu configuración. El ajuste fino de comisiones por producto
-          llega en la próxima iteración.
-        </Alerta>
-      </View>
+      {/* Comisiones por producto */}
+      <Text style={est.comTitulo}>Comisiones por producto</Text>
+      <Text style={est.comAyuda}>
+        Define el porcentaje que recibirá {etiquetaRol(rol).toLowerCase()} por cada producto. No puede superar tu comisión asignada.
+      </Text>
+      {cargandoCom ? (
+        <View style={{ gap: 8, marginTop: 8 }}>
+          {[0, 1].map((i) => (
+            <Skeleton key={i} w="100%" h={44} />
+          ))}
+        </View>
+      ) : items.length === 0 ? (
+        <Alerta tipo="info">No tienes productos con comisión asignada para repartir. La entidad se creará sin comisiones y podrás configurarlas luego.</Alerta>
+      ) : (
+        <ScrollView style={{ maxHeight: 230, marginTop: 6 }} nestedScrollEnabled>
+          {items.map((it) => (
+            <View key={it.productId} style={est.comFila}>
+              <Switch
+                value={it.on}
+                onValueChange={(v) => setItem(it.productId, { on: v })}
+                trackColor={{ true: color.primary, false: '#CBD5E1' }}
+                thumbColor="#fff"
+              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={est.comNombre} numberOfLines={1}>
+                  {it.productName}
+                </Text>
+                <Text style={est.comTope}>
+                  Máx {it.max}%{it.min > 0 ? ` · Mín ${it.min}%` : ''}
+                </Text>
+              </View>
+              <View style={est.comPct}>
+                <TextInput
+                  value={it.pct}
+                  onChangeText={(t) => setItem(it.productId, { pct: t.replace(/[^0-9.]/g, '') })}
+                  editable={it.on}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={color.text4}
+                  style={[est.comInput, !it.on && { opacity: 0.4 }]}
+                />
+                <Text style={est.comPctSign}>%</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
 
       {error ? (
         <View style={{ marginTop: 12 }}>
@@ -263,7 +483,7 @@ function ModalCrearEntidad({
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
         <Boton texto="Cancelar" variante="soft" onPress={onCerrar} style={{ flex: 1 }} />
         <Boton texto={enviando ? 'Creando…' : 'Crear y enviar clave'} onPress={enviar} cargando={enviando} style={{ flex: 1.5 }} />
       </View>
@@ -274,7 +494,9 @@ function ModalCrearEntidad({
 function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
   const nombre = e.nombre || `${e.nombres ?? ''} ${e.apellidos ?? ''}`.trim() || '—'
   const activo = e.activo !== false
-  const comision = e.porcentajeComision != null ? `${e.porcentajeComision}%` : null
+  const correo = e.correo ?? e.email ?? null
+  const telefono = e.telefonoCelular ?? e.telefono ?? null
+  const padre = tab === 'kiosks' ? e.distribuidores?.nombre : tab === 'distributors' ? e.oficinasRegionales?.nombre : null
   return (
     <Tarjeta style={{ padding: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
@@ -282,15 +504,13 @@ function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
           <Text style={est.nombre} numberOfLines={1}>
             {nombre}
           </Text>
-          <Text style={est.detalle} numberOfLines={1}>
-            {e.numeroDocumento ? `${e.numeroDocumento}` : ''}
-            {e.codigo ? `  ·  cód. ${e.codigo}` : ''}
-          </Text>
-          {e.correo || e.telefonoCelular ? (
+          {e.numeroDocumento ? <Text style={est.detalle}>{e.numeroDocumento}</Text> : null}
+          {correo || telefono ? (
             <Text style={est.detalle} numberOfLines={1}>
-              {[e.correo, e.telefonoCelular].filter(Boolean).join('  ·  ')}
+              {[correo, telefono].filter(Boolean).join('  ·  ')}
             </Text>
           ) : null}
+          {padre ? <Text style={est.detalle} numberOfLines={1}>Depende de: {padre}</Text> : null}
           {e.fechaCreacion ? <Text style={est.fecha}>Creado {fechaCorta(e.fechaCreacion)}</Text> : null}
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
@@ -299,10 +519,7 @@ function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
             fondo={activo ? color.successBg : color.borderSoft}
             colorTexto={activo ? color.success : color.text3}
           />
-          {comision ? <Text style={est.comision}>{comision}</Text> : null}
-          {e.comisionPrepagada != null ? (
-            <Text style={est.prepago}>{e.comisionPrepagada ? 'Prepagada' : 'Estándar'}</Text>
-          ) : null}
+          {e.codigo ? <Text style={est.codigo}>cód. {e.codigo}</Text> : null}
         </View>
       </View>
     </Tarjeta>
@@ -310,12 +527,50 @@ function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
 }
 
 const est = StyleSheet.create({
-  tabs: { flexDirection: 'row', gap: 6, marginBottom: 14, flexWrap: 'wrap' },
+  tabs: { flexDirection: 'row', gap: 6, marginBottom: 12, flexWrap: 'wrap' },
   tab: { paddingVertical: 7, paddingHorizontal: 13, borderRadius: 99, borderWidth: 1, borderColor: color.borderSoft },
   tabActivo: { backgroundColor: color.primaryLight, borderColor: color.primaryLight },
+  listaTitulo: { fontSize: 15, fontWeight: '800', color: color.text, marginBottom: 8 },
+  buscador: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: color.borderInput,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: color.white,
+    marginBottom: 14,
+  },
+  buscadorInput: { flex: 1, paddingVertical: 10, fontSize: 13.5, color: color.text },
   nombre: { fontSize: 14, fontWeight: '800', color: color.text },
   detalle: { fontSize: 11.5, color: color.text2, marginTop: 3 },
   fecha: { fontSize: 11, color: color.text4, marginTop: 4 },
-  comision: { fontSize: 12, fontWeight: '700', color: color.primary, fontFamily: fuenteMono },
-  prepago: { fontSize: 10, color: color.text3 },
+  codigo: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
+  comTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text, marginTop: 18 },
+  comAyuda: { fontSize: 11.5, color: color.text3, marginTop: 4, lineHeight: 16 },
+  comFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: color.borderSoft,
+  },
+  comNombre: { fontSize: 13, fontWeight: '700', color: color.text },
+  comTope: { fontSize: 10.5, color: color.text3, marginTop: 2 },
+  comPct: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  comInput: {
+    width: 52,
+    borderWidth: 1,
+    borderColor: color.borderInput,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    fontSize: 13.5,
+    color: color.text,
+    textAlign: 'right',
+    backgroundColor: color.white,
+  },
+  comPctSign: { fontSize: 13, fontWeight: '700', color: color.text3 },
 })

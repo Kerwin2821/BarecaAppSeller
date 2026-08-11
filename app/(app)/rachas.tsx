@@ -4,41 +4,24 @@ import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { rachasApi } from '@/lib/endpoints'
 import { actorUuid } from '@/lib/roles'
-import { numero } from '@/lib/formato'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
-import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
-import { Tarjeta, Pildora, Chip, TituloSeccion } from '@/components/Ui'
-import { color, fuenteMono } from '@/lib/tema'
+import { EstadoError, Skeleton } from '@/components/Estados'
+import { Tarjeta } from '@/components/Ui'
+import { color } from '@/lib/tema'
 
 /**
- * Mis Rachas: racha de días con ventas + retos/incentivos del vendedor.
- * Carga en paralelo `/reporte/racha-resumen` y `/reporte/retos` (BFF). El
- * contrato es incierto, así que todo se lee de forma defensiva (`??`, chaining).
+ * Mis Rachas y Retos: réplica del hero "estilo Duolingo" del portal.
+ * `/reporte/racha-resumen` → { racha, estado, mensaje, semana:[{dia,activo,esHoy,futuro}] }.
+ * `/reporte/retos` → RetoProgreso[] { nombre, descripcion, premio, porcentaje, completado,
+ * etiquetaProgreso, faltanteTexto, icono? }.
  */
+
+const NARANJA = '#F97316'
+const NARANJA_OSC = '#EA580C'
 
 interface DatosRachas {
   resumen: any
   retos: any
-}
-
-/** Número seguro (0 si no es un número válido). */
-function num(v: unknown): number {
-  return typeof v === 'number' && !Number.isNaN(v) ? v : 0
-}
-
-/** Normaliza `diasSemana` (array de booleans o de `{cumplido}`) a boolean[]. */
-function normalizarDias(raw: unknown): boolean[] {
-  if (!Array.isArray(raw)) return []
-  return raw.map((d) =>
-    typeof d === 'boolean' ? d : !!((d as any)?.cumplido ?? (d as any)?.completado ?? (d as any)?.activo),
-  )
-}
-
-/** Normaliza los retos: acepta array directo o `{ items: [] }`. */
-function normalizarRetos(raw: unknown): any[] {
-  if (Array.isArray(raw)) return raw
-  if (Array.isArray((raw as any)?.items)) return (raw as any).items
-  return []
 }
 
 export default function Rachas() {
@@ -52,152 +35,159 @@ export default function Rachas() {
       rachasApi.resumen(user.role, id),
       rachasApi.retos(user.role, id),
     ])
-    return { resumen: resResumen?.data ?? null, retos: resRetos?.data ?? null }
+    return { resumen: (resResumen as any)?.data ?? null, retos: (resRetos as any)?.data ?? null }
   }, [user])
 
   const { datos, cargando, error, recargar } = useApi<DatosRachas | null>(cargar, [user?.loginId])
 
+  const resumen = datos?.resumen
+  const retos: any[] = Array.isArray(datos?.retos) ? datos!.retos : ((datos?.retos as any)?.items ?? [])
+  const completados = retos.filter((r) => r?.completado).length
+
   return (
     <Pantalla onRefresh={recargar}>
-      <CabeceraPantalla titulo="Mis Rachas" detalle="Metas e incentivos por tus ventas" />
+      <CabeceraPantalla titulo="🔥 Mis Rachas y Retos" detalle="Mantén tu ritmo de ventas y gana premios" />
 
       {error ? (
         <EstadoError mensaje={error} onReintentar={recargar} />
       ) : cargando ? (
         <SkeletonRachas />
-      ) : !datos ? (
-        <Tarjeta>
-          <EstadoVacio
-            titulo="Sin datos de retos"
-            detalle="Aún no hay rachas ni retos disponibles para tu perfil."
-          />
-        </Tarjeta>
       ) : (
-        <Contenido resumen={datos.resumen} retos={datos.retos} />
+        <View style={{ gap: 14 }}>
+          {resumen ? <Hero r={resumen} /> : null}
+
+          {completados > 0 ? (
+            <View style={est.banner}>
+              <Text style={est.bannerTxt}>
+                🎉 ¡Felicidades! Has completado {completados} reto{completados === 1 ? '' : 's'}. Tu premio está en camino.
+              </Text>
+            </View>
+          ) : null}
+
+          <Text style={est.seccion}>🎯 Retos activos</Text>
+          {retos.length === 0 ? (
+            <Tarjeta style={{ padding: 18 }}>
+              <Text style={est.vacio}>Por ahora no hay retos activos. ¡Vuelve pronto!</Text>
+            </Tarjeta>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {retos.map((r, i) => (
+                <TarjetaReto key={r?.id ?? i} reto={r} />
+              ))}
+            </View>
+          )}
+        </View>
       )}
     </Pantalla>
   )
 }
 
-function Contenido({ resumen, retos }: { resumen: any; retos: any }) {
-  const rachaActual = num(resumen?.rachaActual ?? resumen?.streak ?? resumen?.diasConsecutivos)
-  const mejorRacha = resumen?.mejorRacha ?? resumen?.maxima
-  const dias = normalizarDias(resumen?.diasSemana)
-  const lista = normalizarRetos(retos)
+function Hero({ r }: { r: any }) {
+  const peligro = r?.estado === 'peligro' || r?.enPeligro === true
+  const racha = typeof r?.racha === 'number' ? r.racha : 0
+  const semana: any[] = Array.isArray(r?.semana) ? r.semana : []
 
   return (
-    <View style={{ gap: 12 }}>
-      <TarjetaRacha rachaActual={rachaActual} mejorRacha={mejorRacha} dias={dias} />
-
-      {lista.length > 0 ? (
-        <>
-          <TituloSeccion>Retos activos</TituloSeccion>
-          <View style={{ gap: 12 }}>
-            {lista.map((r, i) => (
-              <TarjetaReto key={r?.id ?? r?.retoId ?? i} reto={r} />
-            ))}
-          </View>
-        </>
-      ) : (
-        <Tarjeta>
-          <EstadoVacio
-            titulo="Sin retos activos"
-            detalle="Cuando tengas retos asignados aparecerán aquí con su progreso y premio."
-          />
-        </Tarjeta>
-      )}
+    <View>
+      <View style={est.hero}>
+        <Text style={est.avatar}>{peligro ? '😢' : '😄'}</Text>
+        <View style={est.rachaCard}>
+          <Text style={est.rachaLbl}>MI RACHA</Text>
+          <Text style={est.rachaNum}>
+            🔥 {racha} {racha === 1 ? 'DÍA' : 'DÍAS'}
+          </Text>
+          {semana.length > 0 ? (
+            <View style={est.semana}>
+              {semana.map((d, i) => (
+                <View key={i} style={est.dia}>
+                  <Text style={est.diaLbl}>{d?.dia ?? ''}</Text>
+                  <View
+                    style={[
+                      est.diaDot,
+                      d?.activo
+                        ? est.diaDotActivo
+                        : d?.esHoy
+                          ? est.diaDotHoy
+                          : est.diaDotFuturo,
+                    ]}
+                  >
+                    <Text style={[est.diaDotTxt, d?.activo ? { color: NARANJA_OSC } : { color: '#fff' }]}>
+                      {d?.activo ? '✓' : d?.esHoy ? '•' : ''}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+      {r?.mensaje ? <Text style={[est.mensaje, peligro && { color: color.danger }]}>{String(r.mensaje)}</Text> : null}
     </View>
   )
 }
 
-const LETRAS_DIA = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
-
-function TarjetaRacha({
-  rachaActual,
-  mejorRacha,
-  dias,
-}: {
-  rachaActual: number
-  mejorRacha: unknown
-  dias: boolean[]
-}) {
-  return (
-    <Tarjeta style={est.racha}>
-      <Text style={est.rachaNumero}>{numero(rachaActual)}</Text>
-      <Text style={est.rachaEtiqueta}>días seguidos</Text>
-
-      {typeof mejorRacha === 'number' ? (
-        <Text style={est.rachaMejor}>
-          Tu mejor racha: <Text style={{ fontWeight: '800', color: color.text }}>{numero(mejorRacha)} días</Text>
-        </Text>
-      ) : null}
-
-      {dias.length > 0 ? (
-        <View style={est.diasFila}>
-          {dias.map((cumplido, i) => (
-            <View key={i} style={est.diaItem}>
-              <View style={[est.punto, { backgroundColor: cumplido ? color.success : color.border }]} />
-              {dias.length === 7 ? <Text style={est.diaLetra}>{LETRAS_DIA[i]}</Text> : null}
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </Tarjeta>
-  )
-}
-
 function TarjetaReto({ reto }: { reto: any }) {
-  const nombre = reto?.nombre ?? reto?.titulo ?? 'Reto'
+  const nombre = reto?.nombre ?? 'Reto'
   const descripcion = reto?.descripcion
-  const meta = typeof reto?.meta === 'number' ? reto.meta : typeof reto?.objetivo === 'number' ? reto.objetivo : undefined
-  const progreso = num(reto?.progreso ?? reto?.actual)
-  const premio = reto?.premio ?? reto?.recompensa
-  const cumplido = !!(reto?.cumplido ?? reto?.completado)
-  const pct = cumplido ? 100 : meta && meta > 0 ? Math.min(100, (progreso / meta) * 100) : 0
+  const premio = reto?.premio
+  const porcentaje = typeof reto?.porcentaje === 'number' ? Math.max(0, Math.min(100, reto.porcentaje)) : 0
+  const completado = !!reto?.completado
+  const etiqueta = reto?.etiquetaProgreso
+  const falta = reto?.faltanteTexto
+  const icono = reto?.icono ?? '🎯'
 
   return (
-    <Tarjeta style={est.reto}>
-      <View style={est.retoCabecera}>
-        <Text style={est.retoNombre}>{String(nombre)}</Text>
-        {cumplido ? <Pildora texto="Completado" color={color.success} /> : null}
+    <Tarjeta style={[est.reto, completado && { borderColor: color.success, borderWidth: 1.5 }]}>
+      <View style={est.retoTop}>
+        <Text style={est.retoIcono}>{icono}</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={est.retoNombre}>{String(nombre)}</Text>
+          {descripcion ? <Text style={est.retoDesc}>{String(descripcion)}</Text> : null}
+        </View>
       </View>
 
-      {descripcion ? <Text style={est.retoDesc}>{String(descripcion)}</Text> : null}
-
-      <View style={est.barraFondo}>
-        <View style={[est.barra, { width: `${pct}%`, backgroundColor: cumplido ? color.success : color.primary }]} />
+      <View style={est.premio}>
+        <Text style={est.premioLbl}>Premio</Text>
+        <Text style={est.premioVal}>🎁 {premio || '—'}</Text>
       </View>
 
-      <View style={est.retoPie}>
-        <Text style={est.retoProgreso}>
-          {numero(progreso)} / {meta !== undefined ? numero(meta) : '—'}
+      <View style={est.barra}>
+        <View style={[est.barraFill, { width: `${porcentaje}%`, backgroundColor: completado ? color.success : color.primary }]} />
+      </View>
+      <View style={est.barraRow}>
+        {etiqueta ? <Text style={est.prog}>{String(etiqueta)}</Text> : <View />}
+        <Text style={est.pct}>{porcentaje}%</Text>
+      </View>
+
+      {falta ? (
+        <Text style={[est.falta, completado && { color: color.success, fontWeight: '700' }]}>
+          {completado ? `✅ ${falta}` : String(falta)}
         </Text>
-        {premio !== undefined && premio !== null && premio !== '' ? (
-          <Chip texto={`Premio: ${String(premio)}`} fondo={color.primaryLight} colorTexto={color.primaryDark} />
-        ) : null}
-      </View>
+      ) : null}
     </Tarjeta>
   )
 }
 
 function SkeletonRachas() {
   return (
-    <View style={{ gap: 12 }}>
-      <Tarjeta style={est.racha}>
-        <Skeleton w={92} h={44} r={12} />
-        <Skeleton w={110} h={12} style={{ marginTop: 12 }} />
-        <View style={est.diasFila}>
-          {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} w={12} h={12} r={6} />
-          ))}
+    <View style={{ gap: 14 }}>
+      <View style={est.hero}>
+        <Skeleton w={56} h={56} r={28} />
+        <View style={[est.rachaCard, { backgroundColor: '#FDBA74' }]}>
+          <Skeleton w={90} h={12} />
+          <Skeleton w={130} h={22} style={{ marginTop: 8 }} />
+          <View style={est.semana}>
+            {Array.from({ length: 7 }).map((_, i) => (
+              <Skeleton key={i} w={22} h={34} r={8} />
+            ))}
+          </View>
         </View>
-      </Tarjeta>
+      </View>
       {Array.from({ length: 2 }).map((_, i) => (
         <Tarjeta key={i} style={est.reto}>
           <Skeleton w="55%" h={14} />
           <Skeleton w="82%" h={11} style={{ marginTop: 8 }} />
           <Skeleton w="100%" h={8} r={99} style={{ marginTop: 14 }} />
-          <Skeleton w="42%" h={11} style={{ marginTop: 10 }} />
         </Tarjeta>
       ))}
     </View>
@@ -205,21 +195,53 @@ function SkeletonRachas() {
 }
 
 const est = StyleSheet.create({
-  racha: { padding: 20, alignItems: 'center' },
-  rachaNumero: { fontSize: 48, fontWeight: '800', color: color.primary, letterSpacing: -1.2, fontFamily: fuenteMono },
-  rachaEtiqueta: { fontSize: 12.5, fontWeight: '700', color: color.text3, letterSpacing: 0.3, marginTop: 2 },
-  rachaMejor: { fontSize: 12.5, color: color.text2, marginTop: 10 },
-  diasFila: { flexDirection: 'row', gap: 12, marginTop: 18 },
-  diaItem: { alignItems: 'center', gap: 5 },
-  punto: { width: 12, height: 12, borderRadius: 6 },
-  diaLetra: { fontSize: 10, fontWeight: '700', color: color.text4 },
-
+  hero: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { fontSize: 44 },
+  rachaCard: {
+    flex: 1,
+    backgroundColor: NARANJA,
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    shadowColor: NARANJA_OSC,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  rachaLbl: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: '#FFEAD5' },
+  rachaNum: { fontSize: 24, fontWeight: '900', color: '#fff', marginTop: 2, letterSpacing: -0.4 },
+  semana: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
+  dia: { alignItems: 'center', gap: 5, flex: 1 },
+  diaLbl: { fontSize: 10.5, fontWeight: '800', color: '#FFEAD5' },
+  diaDot: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  diaDotActivo: { backgroundColor: '#fff' },
+  diaDotHoy: { backgroundColor: 'rgba(255,255,255,0.28)', borderWidth: 1.5, borderColor: '#fff' },
+  diaDotFuturo: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  diaDotTxt: { fontSize: 12, fontWeight: '900' },
+  mensaje: { fontSize: 13, fontWeight: '700', color: color.text2, marginTop: 12, textAlign: 'center' },
+  banner: {
+    backgroundColor: color.successBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: color.success,
+    padding: 14,
+  },
+  bannerTxt: { fontSize: 12.5, fontWeight: '700', color: color.success, lineHeight: 18 },
+  seccion: { fontSize: 15, fontWeight: '800', color: color.text },
+  vacio: { fontSize: 13, color: color.text3, textAlign: 'center' },
   reto: { padding: 16 },
-  retoCabecera: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  retoNombre: { flex: 1, fontSize: 14, fontWeight: '800', color: color.text, letterSpacing: -0.2 },
-  retoDesc: { fontSize: 12.5, color: color.text2, marginTop: 4, lineHeight: 18 },
-  barraFondo: { height: 8, backgroundColor: color.borderSoft, borderRadius: 99, overflow: 'hidden', marginTop: 14 },
-  barra: { height: '100%', borderRadius: 99 },
-  retoPie: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 8 },
-  retoProgreso: { fontSize: 12, fontWeight: '700', color: color.text2, fontFamily: fuenteMono },
+  retoTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  retoIcono: { fontSize: 26 },
+  retoNombre: { fontSize: 14.5, fontWeight: '800', color: color.text },
+  retoDesc: { fontSize: 12, color: color.text2, marginTop: 3, lineHeight: 17 },
+  premio: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+  premioLbl: { fontSize: 11, fontWeight: '700', color: color.text3, letterSpacing: 0.3 },
+  premioVal: { fontSize: 12.5, fontWeight: '800', color: color.primaryDark },
+  barra: { height: 9, backgroundColor: color.borderSoft, borderRadius: 99, overflow: 'hidden', marginTop: 12 },
+  barraFill: { height: '100%', borderRadius: 99 },
+  barraRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 },
+  prog: { fontSize: 11.5, fontWeight: '700', color: color.text2 },
+  pct: { fontSize: 11.5, fontWeight: '800', color: color.primary },
+  falta: { fontSize: 11.5, color: color.text3, marginTop: 8 },
 })

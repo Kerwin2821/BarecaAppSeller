@@ -49,6 +49,19 @@ export const authApi = {
       body: payload,
     }),
 
+  /** Opciones de "Duración de la Contraseña" (Perfil › Seguridad). */
+  fechasExpiraciones: () =>
+    bff<{ id: number; dias: number; activo: boolean }[]>('/auth/fechas-expiraciones', {
+      params: { page: 0, size: 20 },
+    }),
+
+  /** Cambia la clave desde Perfil (payload de la web: pass + fechaExpiracionId). */
+  cambiarPassPerfil: (payload: { loginId: string; pass: string; fechaExpiracionId: number }) =>
+    bff<ApiResponse<string>>('/auth/passwords/v1/actualizar-pass-usuario', {
+      method: 'PATCH',
+      body: payload,
+    }),
+
   // Recuperación de contraseña (OTP por correo)
   otpCambioPass: (correo: string) =>
     bff<ApiResponse<string>>('/auth/passwords/v2/otp-cambio-pass', {
@@ -64,6 +77,15 @@ export const authApi = {
     }),
 
   logout: () => bff<ApiResponse<unknown>>('/auth/logout', { method: 'POST', body: {}, sinCierre: true }),
+
+  /** Foto de perfil actual del usuario (Perfil › Información Personal). */
+  obtenerFoto: (loginId: string) =>
+    bff<ApiResponse<{ url?: string }>>(`/auth/fotos-usuarios/v1/obtener-foto-userio/${encodeURIComponent(loginId)}`, {
+      sinCierre: true,
+    }),
+  /** Sube/actualiza la foto de perfil (multipart `file`). */
+  subirFoto: (loginId: string, form: FormData) =>
+    bff<ApiResponse<string>>(`/auth/fotos-usuarios/upload/${encodeURIComponent(loginId)}`, { method: 'POST', body: form }),
 }
 
 // ── Usuarios / jerarquía (enriquecimiento del perfil, filtros JHipster) ──────
@@ -90,6 +112,17 @@ export const userApi = {
   /** Datos de pago del actor (cuentas para recibir comisiones/retiros). */
   datosPagosByActor: (tipoActor: string, uuid: string) =>
     bff<ApiResponse<any[]>>('/users/datos-pagos/v1/datos-pagos/by-actor', { params: { tipoActor, uuid } }),
+
+  /** Registra un método de retiro (Pago Móvil) para recibir comisiones. */
+  crearDatosPago: (body: {
+    numeroDocumento: string
+    telefono: string
+    alias: string
+    banco: string
+    oficinasRegionalesId?: string | null
+    distribuidoresId?: string | null
+    kioscosPuestosId?: string | null
+  }) => bff<ApiResponse<any>>('/users/datos-pagos/v1/datos-pagos', { method: 'POST', body }),
 }
 
 // ── Pólizas (Mis Ventas) ────────────────────────────────────
@@ -125,8 +158,19 @@ export const notifApi = {
 export const reportApi = {
   kpis: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
     bff<{ success: boolean; data: ReportKpis }>('/reporte/kpis', { params: { perfil, id, ...filtros } }),
+  /** Rankings ("Mejores kioscos/distribuidores/oficinas") por nivel descendiente. */
+  rankings: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
+    bff<{ success: boolean; data: { oficinas?: any[]; distribuidores?: any[]; kioscos?: any[] } }>('/reporte/rankings', {
+      params: { perfil, id, ...filtros, limit: 10 },
+    }),
+  /** Opciones de los filtros (proveedores, productos, kioscos, distribuidores, oficinas). */
+  opciones: (perfil: string, id: string | number) =>
+    bff<{ success: boolean; data: { oficinas?: any[]; distribuidores?: any[]; kioscos?: any[]; proveedores?: any[]; productos?: any[] } }>(
+      '/reporte/opciones',
+      { params: { perfil, id } },
+    ),
   polizas: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
-    bff<{ success: boolean; data: any[] }>('/reporte/polizas', { params: { perfil, id, ...filtros } }),
+    bff<{ success: boolean; data: any }>('/reporte/polizas', { params: { perfil, id, ...filtros } }),
   /** Puntos del mapa de conexiones (red comercial con coordenadas). */
   mapa: (perfil: string, id: string | number) =>
     bff<{ success: boolean; data: any[] }>('/reporte/mapa', { params: { perfil, id } }),
@@ -370,7 +414,14 @@ export const rachasApi = {
 
 // ── Equipo (alta unificada de entidad) ──────────────────────
 export const teamApi = {
+  /** Alta unificada (CreateEntityBffPayload: entityType/creatorName/userRole/context/formData/currentUserCtx). */
   unifiedCreate: (body: unknown) => bff<any>('/users/team/unified-create', { method: 'POST', body }),
+  /**
+   * Topes de comisión por producto que el creador puede asignar (min = comisionMinima,
+   * max = porcentajeComision). tipoActor = rol del creador.
+   */
+  comisionesMinima: (tipoActor: string, actorUuid: string) =>
+    bff<any[]>('/users/comisiones-nodos/v1/comisiones-nodos/minima', { params: { tipoActor, actorUuid } }),
 }
 
 // ── Staging de cliente + vehículo (antes de crear la orden) ─

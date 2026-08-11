@@ -24,6 +24,14 @@ export const API_BASE = `${BFF_URL}${API_PREFIX}`
  */
 export const PORTAL_ID = process.env.EXPO_PUBLIC_PORTAL_ID ?? 'VENDEDORES'
 
+/**
+ * Base del portal de autogestión del cliente (destino del "Link Referido" de
+ * Perfil: `{PORTAL_CLIENTE_URL}/generate-receipt?ref=...`). QA por defecto.
+ */
+export const PORTAL_CLIENTE_URL: string = (
+  process.env.EXPO_PUBLIC_PORTAL_CLIENTE_URL ?? 'https://qaportal.bareca.com'
+).replace(/\/$/, '')
+
 export class ApiException extends Error {
   readonly status: number
   readonly cuerpo?: unknown
