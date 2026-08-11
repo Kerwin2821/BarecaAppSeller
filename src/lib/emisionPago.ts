@@ -64,6 +64,8 @@ export interface SaleDataVenta {
   productoId: string | null
   grupoId: string | null
   selectedProviderName?: string
+  /** proveedorId (UUID) ya resuelto en la cotización (cruzando producto.proveedor.id). */
+  proveedorId?: string
   proveedores: any[]
   plan: any
   cliente: DatosCliente
@@ -204,15 +206,22 @@ function resolverSeguro(nombre?: string): string {
 }
 
 function resolverProveedorId(sd: SaleDataVenta): string {
+  // 1) El id ya resuelto en la cotización (cruzando producto.proveedor.id) — el correcto.
+  if (sd.proveedorId) return sd.proveedorId
   const provs = sd.proveedores || []
-  const nombre = (sd.selectedProviderName || '').toLowerCase()
-  if (nombre) {
-    const f = provs.find((p: any) => (p.nombre || '').toLowerCase().includes(nombre))
+  // 2) El nombre del producto ("RCV Nacional - Seguros La Occidental") CONTIENE el nombre
+  //    del proveedor ("Seguros La Occidental"): buscamos al revés (provider ⊂ producto).
+  const nombreProducto = (sd.selectedProviderName || '').toLowerCase()
+  if (nombreProducto) {
+    const f = provs.find((p: any) => {
+      const pn = (p.nombre || '').toLowerCase()
+      return pn && (nombreProducto.includes(pn) || pn.includes(nombreProducto))
+    })
     if (f?.proveedorId) return f.proveedorId
   }
-  // Fallback por tipo de placa.
-  const tipoPlaca = sd.plan?.tipoPlaca || 'NACIONAL'
-  const buscar = tipoPlaca === 'EXTRANJERA' ? 'estar' : 'caroni'
+  // 3) Fallback por aseguradora del nombre del producto.
+  const seguro = resolverSeguro(sd.selectedProviderName)
+  const buscar = seguro === 'ESTARSEGUROS' ? 'estar' : seguro === 'OCCIDENTAL' ? 'occidental' : 'caroni'
   return provs.find((p: any) => (p.nombre || '').toLowerCase().includes(buscar))?.proveedorId ?? ''
 }
 
@@ -246,6 +255,18 @@ export interface Emision {
   urlPoliza?: string
   urlCarnetPoliza?: string
   transactionId?: string
+  condicionado?: string
+  condicionadoTitulo?: string
+}
+
+/** Condicionado estático por aseguradora (igual que PROVIDER_DOCUMENTS del portal). */
+function condicionadoDe(seguroONombre: string): { url: string; titulo: string } | null {
+  const n = (seguroONombre || '').toUpperCase()
+  const base = (process.env.EXPO_PUBLIC_BFF_URL ?? '').replace(/\/$/, '')
+  if (n.includes('OCCIDENTAL')) return { url: `${base}/assets/condicionado-rcv-la-occidental.pdf`, titulo: 'Condicionado de Póliza RCV La Occidental' }
+  if (n.includes('ESTAR')) return { url: `${base}/assets/condicionado-rcv-estar-seguros.pdf`, titulo: 'Condicionado de Póliza RCV Estar Seguros' }
+  if (n.includes('CARONI')) return { url: `${base}/assets/contrato-servicio.pdf`, titulo: 'Condicionado de Póliza RCV Seguros Caroni' }
+  return null
 }
 
 /**
@@ -548,11 +569,14 @@ export function useEmisionPago() {
     }
     const r = await paymentApi.finalizePolicy(payload)
     const d = r?.data ?? {}
+    const cond = condicionadoDe(resolverSeguro(sd.selectedProviderName))
     setEmision({
       numeroPoliza: d.numeroPoliza,
       urlPoliza: d.urlPoliza,
       urlCarnetPoliza: d.urlCarnetPoliza,
       transactionId: d.numeroPoliza,
+      condicionado: cond?.url,
+      condicionadoTitulo: cond?.titulo,
     })
     setOtpState('verified')
   }, [rates])

@@ -194,6 +194,10 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
       productoId,
       grupoId,
       selectedProviderName: productos.find((p) => p.productoId === productoId)?.nombre,
+      // proveedorId ya resuelto en la cotización (cruza producto.proveedor.id) — el que
+      // define la secuencia del Nº de póliza; NO re-resolver por nombre en el finalize.
+      proveedorId:
+        proveedores.find((p) => p.id === producto?.proveedor?.id)?.proveedorId ?? producto?.proveedor?.proveedorId ?? undefined,
       proveedores,
       plan: planes[planIdx ?? 0],
       cliente: cliente as DatosCliente,
@@ -1076,6 +1080,7 @@ function PagoExito({
   const docs = [
     { etiqueta: 'Comprobante de Póliza', emoji: '📄', url: emision?.urlPoliza },
     { etiqueta: 'Carnet de RCV', emoji: '🪪', url: emision?.urlCarnetPoliza },
+    { etiqueta: emision?.condicionadoTitulo ?? 'Condicionado de Póliza', emoji: '📑', url: emision?.condicionado },
   ].filter((d) => !!d.url)
 
   return (
