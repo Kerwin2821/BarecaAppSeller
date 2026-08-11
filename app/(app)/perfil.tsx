@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { StyleSheet, Switch, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
-import { etiquetaRol } from '@/lib/roles'
+import { userApi } from '@/lib/endpoints'
+import { actorUuid, etiquetaRol } from '@/lib/roles'
 import { iniciales } from '@/lib/formato'
 import {
   autenticarBiometria,
@@ -35,6 +36,18 @@ export default function Perfil() {
   const [bioDisponible, setBioDisponible] = useState(false)
   const [bioHabilitada, setBioHabilitada] = useState(false)
   const [bioTipo, setBioTipo] = useState('Huella')
+  const [datosPago, setDatosPago] = useState<any[]>([])
+
+  // Datos de pago del actor (cuentas para recibir comisiones), como la web.
+  useEffect(() => {
+    if (!user) return
+    const uuid = actorUuid(user)
+    if (!uuid) return
+    userApi
+      .datosPagosByActor(user.role, uuid)
+      .then((r) => setDatosPago((r as any)?.data ?? []))
+      .catch(() => setDatosPago([]))
+  }, [user])
 
   useEffect(() => {
     ;(async () => {
@@ -91,6 +104,26 @@ export default function Perfil() {
         ) : null}
       </Tarjeta>
 
+      <TituloSeccion>Datos de Pago</TituloSeccion>
+      {datosPago.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          {datosPago.map((p, i) => (
+            <Tarjeta key={p?.datosPagosId ?? p?.id ?? i} style={{ padding: 16 }}>
+              {p?.alias ? <Text style={est.pagoAlias}>{p.alias}</Text> : null}
+              <Dato etiqueta="Banco" valor={p?.banco} />
+              <Dato etiqueta="Teléfono" valor={p?.telefono} />
+              <Dato etiqueta="Documento" valor={p?.numeroDocumento} />
+            </Tarjeta>
+          ))}
+        </View>
+      ) : (
+        <Tarjeta style={{ padding: 16 }}>
+          <Text style={{ fontSize: 12.5, color: color.text3, lineHeight: 18 }}>
+            No tienes cuentas de pago registradas. Se configuran para recibir tus comisiones.
+          </Text>
+        </Tarjeta>
+      )}
+
       <TituloSeccion>Seguridad</TituloSeccion>
       <Tarjeta style={{ padding: 16, marginBottom: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -133,4 +166,5 @@ const est = StyleSheet.create({
   dato: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: color.borderSoft, gap: 12 },
   datoEtiqueta: { fontSize: 12, color: color.text3 },
   datoValor: { fontSize: 12.5, fontWeight: '600', color: color.text, flexShrink: 1, textAlign: 'right' },
+  pagoAlias: { fontSize: 13.5, fontWeight: '800', color: color.primaryDark, marginBottom: 6 },
 })

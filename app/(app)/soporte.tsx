@@ -57,7 +57,16 @@ export default function Soporte() {
     }
     setEnviando(true)
     try {
-      await ticketsApi.crear({ asunto: a, mensaje: m, loginId: user.loginId })
+      // Payload igual al portal (CrearTicketPayload): titulo/detalle/creador*.
+      await ticketsApi.crear({
+        titulo: a,
+        detalle: m,
+        archivos: '[]',
+        creadorLoginId: user.loginId,
+        creadorNombre: user.firstName || user.loginId,
+        creadorPerfil: user.role,
+        creadorDestinoId: null,
+      })
       avisar('Ticket enviado. Te responderemos pronto.', 'ok')
       setAsunto('')
       setMensaje('')

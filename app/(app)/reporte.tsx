@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { reportApi } from '@/lib/endpoints'
-import { entidadIdPorRol } from '@/lib/roles'
+import { actorUuid } from '@/lib/roles'
 import { moneda, numero } from '@/lib/formato'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError } from '@/components/Estados'
@@ -14,7 +14,7 @@ import { color, fuenteMono } from '@/lib/tema'
 export default function Reporte() {
   const { user } = useAuth()
   const cargar = useCallback(async () => {
-    const id = user ? entidadIdPorRol(user) : undefined
+    const id = user ? (actorUuid(user) ?? undefined) : undefined
     if (!user || id === undefined) return {}
     const r = await reportApi.kpis(user.role, id)
     return (r?.data ?? {}) as Record<string, number>

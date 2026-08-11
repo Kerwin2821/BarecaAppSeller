@@ -131,11 +131,25 @@ export function mapFuneral(f: any): DisplayPolicy {
   }
 }
 
-/** Parámetros de jerarquía según el rol (buildApiParams del portal). */
-function filtroJerarquia(user: CurrentUser | null): Record<string, string | undefined> {
+/**
+ * RCV (/policies/polizas) y Funeraria (/clients/polizas-funerarios) son endpoints
+ * de criterios JHipster: solo enlazan `campo.equals`. La relación del distribuidor
+ * se filtra por `distribuidor.equals` (nombre de la relación), NO `distribuidorId`.
+ */
+function filtroJerarquiaJhipster(user: CurrentUser | null): Record<string, string | undefined> {
+  if (!user) return {}
+  if (user.kioskoId) return { 'kioscoId.equals': user.kioskoId }
+  if (user.distribuidorId) return { 'distribuidor.equals': user.distribuidorId }
+  if (user.oficinaRegionalId) return { 'oficinaRegionalId.equals': user.oficinaRegionalId }
+  if (user.barecaId) return { 'barecaId.equals': user.barecaId }
+  return {}
+}
+
+/** Casco (/policies/casco/mis-ventas) usa params planos (distribuidor→distribuidorId). */
+function filtroJerarquiaCasco(user: CurrentUser | null): Record<string, string | undefined> {
   if (!user) return {}
   if (user.kioskoId) return { kioscoId: user.kioskoId }
-  if (user.distribuidorId) return { distribuidor: user.distribuidorId }
+  if (user.distribuidorId) return { distribuidorId: user.distribuidorId }
   if (user.oficinaRegionalId) return { oficinaRegionalId: user.oficinaRegionalId }
   if (user.barecaId) return { barecaId: user.barecaId }
   return {}
@@ -157,17 +171,16 @@ export async function fetchPolizas(
   page = 0,
   size = 25,
 ): Promise<{ items: DisplayPolicy[]; total: number }> {
-  const params = { page, size, ...filtroJerarquia(user) }
   let r: any
   let mapper: (x: any) => DisplayPolicy
   if (categoria === 'auto') {
-    r = await policyApi.cascoMisVentas(params)
+    r = await policyApi.cascoMisVentas({ page, size, ...filtroJerarquiaCasco(user) })
     mapper = mapCasco
   } else if (categoria === 'funeral') {
-    r = await policyApi.funerariasMisVentas(params)
+    r = await policyApi.funerariasMisVentas({ page, size, ...filtroJerarquiaJhipster(user) })
     mapper = mapFuneral
   } else {
-    r = await policyApi.lista(params)
+    r = await policyApi.lista({ page, size, ...filtroJerarquiaJhipster(user) })
     mapper = mapPoliza
   }
   const { data, total } = desenvolverLista(r)

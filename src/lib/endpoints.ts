@@ -86,6 +86,10 @@ export const userApi = {
     bff<any>('/users/team/hierarchy', { params }),
 
   productos: () => bff<any>('/users/productos', { params: { page: 0, size: 200 } }),
+
+  /** Datos de pago del actor (cuentas para recibir comisiones/retiros). */
+  datosPagosByActor: (tipoActor: string, uuid: string) =>
+    bff<ApiResponse<any[]>>('/users/datos-pagos/v1/datos-pagos/by-actor', { params: { tipoActor, uuid } }),
 }
 
 // ── Pólizas (Mis Ventas) ────────────────────────────────────
@@ -123,6 +127,9 @@ export const reportApi = {
     bff<{ success: boolean; data: ReportKpis }>('/reporte/kpis', { params: { perfil, id, ...filtros } }),
   polizas: (perfil: string, id: string | number, filtros: Record<string, string | number | undefined> = {}) =>
     bff<{ success: boolean; data: any[] }>('/reporte/polizas', { params: { perfil, id, ...filtros } }),
+  /** Puntos del mapa de conexiones (red comercial con coordenadas). */
+  mapa: (perfil: string, id: string | number) =>
+    bff<{ success: boolean; data: any[] }>('/reporte/mapa', { params: { perfil, id } }),
 }
 
 // ── Comisiones (bajo /api/users) ────────────────────────────

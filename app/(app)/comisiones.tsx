@@ -32,8 +32,9 @@ export default function Comisiones() {
   }, [user])
   const { datos, cargando, error, recargar } = useApi<any>(cargar, [user?.loginId])
 
-  const generado = datos?.totalGenerado ?? datos?.generado ?? datos?.total ?? datos?.montoTotal
-  const pagado = datos?.totalPagado ?? datos?.pagado ?? datos?.montoPagado
+  // Claves reales del backend (CommissionTotals): totalHistorico / totalPagada / totalPendiente.
+  const generado = datos?.totalHistorico ?? datos?.totalGenerado ?? datos?.total ?? datos?.montoTotal
+  const pagado = datos?.totalPagada ?? datos?.totalPagado ?? datos?.pagado ?? datos?.montoPagado
   const pendiente = datos?.totalPendiente ?? datos?.pendiente ?? datos?.montoPendiente
 
   return (

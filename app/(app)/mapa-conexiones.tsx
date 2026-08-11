@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import MapView, { Marker } from 'react-native-maps'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
-import { comisionApi } from '@/lib/endpoints'
+import { reportApi } from '@/lib/endpoints'
 import { desenvolver } from '@/lib/api'
 import { actorUuid, etiquetaRol } from '@/lib/roles'
 import { moneda, iniciales } from '@/lib/formato'
@@ -157,7 +157,10 @@ export default function MapaConexiones() {
 
   const cargar = useCallback(async () => {
     if (!user) return null
-    return comisionApi.subarbol({ tipoActor: user.role, actorUuid: actorUuid(user) ?? undefined })
+    const id = actorUuid(user)
+    if (!id) return null
+    // La web usa /reporte/mapa (no el subárbol de comisiones).
+    return reportApi.mapa(user.role, id)
   }, [user])
   const { datos, cargando, error, recargar } = useApi<any>(cargar, [user?.loginId])
 

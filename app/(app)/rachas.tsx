@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { rachasApi } from '@/lib/endpoints'
-import { entidadIdPorRol } from '@/lib/roles'
+import { actorUuid } from '@/lib/roles'
 import { numero } from '@/lib/formato'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
@@ -46,7 +46,7 @@ export default function Rachas() {
 
   const cargar = useCallback(async (): Promise<DatosRachas | null> => {
     if (!user) return null
-    const id = entidadIdPorRol(user)
+    const id = actorUuid(user) ?? undefined
     if (id === undefined) return null
     const [resResumen, resRetos] = await Promise.all([
       rachasApi.resumen(user.role, id),
