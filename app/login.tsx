@@ -237,7 +237,7 @@ export default function Login() {
 }
 
 const est = StyleSheet.create({
-  logo: { width: 168, height: 78, resizeMode: 'contain', alignSelf: 'center', marginBottom: 20 },
+  logo: { width: 212, height: 66, resizeMode: 'contain', alignSelf: 'center', marginBottom: 20 },
   huellaBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -42,7 +42,7 @@ export default function Verificar() {
 }
 
 const est = StyleSheet.create({
-  logo: { width: 160, height: 66, resizeMode: 'contain', alignSelf: 'center', marginBottom: 22 },
+  logo: { width: 200, height: 64, resizeMode: 'contain', alignSelf: 'center', marginBottom: 22 },
   escudo: {
     width: 56,
     height: 56,

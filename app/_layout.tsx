@@ -87,7 +87,7 @@ export default function RootLayout() {
 
 const est = StyleSheet.create({
   splash: { flex: 1, backgroundColor: color.white, alignItems: 'center', justifyContent: 'center', gap: 26 },
-  logo: { width: 200, height: 90, resizeMode: 'contain' },
+  logo: { width: 224, height: 70, resizeMode: 'contain' },
   bloqueoTexto: { fontSize: 14, fontWeight: '700', color: color.text2 },
   bloqueoBtn: { backgroundColor: color.primary, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 26 },
   bloqueoBtnTexto: { color: '#fff', fontSize: 14, fontWeight: '800' },

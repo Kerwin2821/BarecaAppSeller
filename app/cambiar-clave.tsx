@@ -135,7 +135,7 @@ export default function CambiarClave() {
 }
 
 const est = StyleSheet.create({
-  logo: { width: 150, height: 60, resizeMode: 'contain', alignSelf: 'center', marginBottom: 18 },
+  logo: { width: 190, height: 60, resizeMode: 'contain', alignSelf: 'center', marginBottom: 18 },
   titulo: { fontSize: 18, fontWeight: '800', color: color.text },
   cancelar: { fontSize: 12, fontWeight: '600', color: color.text3 },
 })

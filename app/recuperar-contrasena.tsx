@@ -197,7 +197,7 @@ export default function RecuperarContrasena() {
 }
 
 const est = StyleSheet.create({
-  logo: { width: 150, height: 60, resizeMode: 'contain', alignSelf: 'center', marginBottom: 18 },
+  logo: { width: 190, height: 60, resizeMode: 'contain', alignSelf: 'center', marginBottom: 18 },
   titulo: { fontSize: 18, fontWeight: '800', color: color.text },
   sub: { fontSize: 12.5, color: color.text2, marginTop: 4, lineHeight: 18 },
   volver: { fontSize: 12, fontWeight: '600', color: color.primary },

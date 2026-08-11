@@ -142,7 +142,7 @@ const est = StyleSheet.create({
     paddingHorizontal: 12,
   },
   marca: { paddingHorizontal: 6, paddingBottom: 8 },
-  logo: { width: 132, height: 44, resizeMode: 'contain' },
+  logo: { width: 154, height: 48, resizeMode: 'contain' },
   usuario: {
     flexDirection: 'row',
     alignItems: 'center',
