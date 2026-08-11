@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
@@ -15,10 +15,28 @@ import { CargandoBloque, EstadoError, EstadoVacio, Skeleton } from '@/components
 import { Alerta, Boton, Chip, Pildora, Tarjeta } from '@/components/Ui'
 import { Modal } from '@/components/Modal'
 import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
+import { BannerAseguradoras } from '@/components/BannerAseguradoras'
 import { useToast } from '@/components/Toast'
 import { color } from '@/lib/tema'
 
 const NARANJA = '#F97316'
+
+// Mascota (racha en riesgo) y logos de aseguradora — empaquetados en el app.
+const CARA_TRISTE = require('../../assets/racha-triste.png')
+const LOGOS_ASEG: { re: RegExp; src: number }[] = [
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
+  { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
+  { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
+]
+function LogoAseg({ nombre }: { nombre?: string }) {
+  const logo = LOGOS_ASEG.find((l) => l.re.test(nombre || ''))
+  if (!logo) return null
+  return (
+    <View style={est.asegChip}>
+      <Image source={logo.src} resizeMode="contain" style={{ height: 14, width: 60 }} />
+    </View>
+  )
+}
 
 export default function Home() {
   const router = useRouter()
@@ -28,12 +46,24 @@ export default function Home() {
   const cargar = useCallback(async () => {
     if (!user) return null
     const uuid = actorUuid(user) ?? ''
-    const [tot, res, pol] = await Promise.all([
+    const entidadPromesa: Promise<any> = !uuid
+      ? Promise.resolve(null)
+      : user.role === 'DISTRIBUIDOR'
+        ? userApi.distribuidorByUuid(uuid)
+        : user.role === 'KIOSCO'
+          ? userApi.kioscoByUuid(uuid)
+          : user.role === 'OFICINA_REGIONAL'
+            ? userApi.oficinaByUuid(uuid)
+            : user.role === 'BARECA'
+              ? userApi.barecaByUuid(uuid)
+              : Promise.resolve(null)
+    const [tot, res, pol, ent] = await Promise.all([
       uuid ? comisionApi.totales(user.role, uuid).then((r) => desenvolver(r) as any).catch(() => null) : Promise.resolve(null),
       uuid ? rachasApi.resumen(user.role, uuid).then((r: any) => r?.data ?? null).catch(() => null) : Promise.resolve(null),
       fetchPolizas(user, 'vehicle', 0, 5).then((r) => r.items).catch(() => [] as DisplayPolicy[]),
+      entidadPromesa.then((e: any) => e?.nombre ?? null).catch(() => null),
     ])
-    return { tot, res, pol }
+    return { tot, res, pol, nombreEnt: ent }
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
 
@@ -44,19 +74,25 @@ export default function Home() {
   const res = datos?.res
   const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true : null
   const polizas: DisplayPolicy[] = datos?.pol ?? []
-  const nombre = `${user?.firstName ?? ''}`.trim() || user?.email || 'Vendedor'
+  const nombre = datos?.nombreEnt || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
 
   return (
     <Pantalla onRefresh={recargar}>
       {/* Saludo + carita de meta */}
       <View style={est.saludoFila}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={est.saludo}>Hola, {nombre.split(' ')[0]} 👋</Text>
+          <Text style={est.saludo} numberOfLines={2}>
+            Hola, {nombre} 👋
+          </Text>
           <Text style={est.rol}>{etiquetaRol(user?.role)}</Text>
         </View>
         {res ? (
           <View style={est.metaBox}>
-            <Text style={est.cara}>{cumpliendo ? '😄' : '😢'}</Text>
+            {cumpliendo ? (
+              <Text style={est.cara}>😄</Text>
+            ) : (
+              <Image source={CARA_TRISTE} resizeMode="contain" style={est.caraImg} />
+            )}
             <Text style={[est.metaTxt, { color: cumpliendo ? color.success : color.danger }]}>
               {cumpliendo ? 'Meta al día' : 'Meta en riesgo'}
             </Text>
@@ -108,6 +144,8 @@ export default function Home() {
             <Acceso emoji="💬" texto="Soporte" onPress={() => router.navigate('/soporte' as never)} />
           </View>
 
+          <BannerAseguradoras />
+
           {/* Últimas pólizas */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 }}>
             <Text style={est.seccion}>Últimas pólizas</Text>
@@ -131,10 +169,15 @@ export default function Home() {
                       <Text style={est.polCliente} numberOfLines={1}>
                         {p.clientName}
                       </Text>
-                      <Text style={est.polSub} numberOfLines={1}>
-                        Nº {p.policyNumber || '—'} · {p.productName}
+                      <View style={est.polAseg}>
+                        <LogoAseg nombre={p.productName} />
+                        <Text style={est.polAsegTxt} numberOfLines={1}>
+                          {p.productName}
+                        </Text>
+                      </View>
+                      <Text style={est.polFecha}>
+                        Nº {p.policyNumber || '—'} · {fechaCorta(p.saleDate)}
                       </Text>
-                      <Text style={est.polFecha}>{fechaCorta(p.saleDate)}</Text>
                     </View>
                     <Pildora
                       color={p.status === 'Vigente' ? color.vigente : p.status === 'Inactiva' ? color.inactiva : color.procesado}
@@ -277,6 +320,10 @@ const est = StyleSheet.create({
   rol: { fontSize: 12.5, color: color.text2, marginTop: 2 },
   metaBox: { alignItems: 'center' },
   cara: { fontSize: 30 },
+  caraImg: { width: 54, height: 42 },
+  asegChip: { backgroundColor: '#fff', borderRadius: 5, borderWidth: 1, borderColor: color.borderSoft, paddingHorizontal: 5, paddingVertical: 2 },
+  polAseg: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  polAsegTxt: { flex: 1, fontSize: 11.5, color: color.text2, fontWeight: '600' },
   metaTxt: { fontSize: 10.5, fontWeight: '800', marginTop: 1 },
   wallet: {
     backgroundColor: color.primary,
