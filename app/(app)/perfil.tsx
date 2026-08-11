@@ -19,6 +19,7 @@ import {
   tipoBiometria,
 } from '@/lib/biometria'
 import { useToast } from '@/components/Toast'
+import { MedidorClave } from '@/components/MedidorClave'
 import { Modal } from '@/components/Modal'
 import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
 import { Pantalla } from '@/components/Pantalla'
@@ -219,8 +220,8 @@ function TabSeguridad() {
 
   const guardar = async () => {
     if (guardando || !user) return
-    if (nueva.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres.')
+    if (nueva.length < 8 || !/[A-ZÁÉÍÓÚÑ]/.test(nueva) || !/\d/.test(nueva) || !/[^A-Za-z0-9]/.test(nueva)) {
+      setError('La contraseña debe tener mínimo 8 caracteres, una mayúscula, un número y un carácter especial.')
       return
     }
     if (nueva !== confirmar) {
@@ -251,18 +252,21 @@ function TabSeguridad() {
       <TituloSeccion>Seguridad de la Cuenta</TituloSeccion>
       <Tarjeta style={{ padding: 16, gap: 14 }}>
         <Text style={est.ayuda}>Define una nueva contraseña y su duración.</Text>
-        <Campo
-          etiqueta="Nueva Contraseña"
-          placeholder="Mínimo 8 caracteres"
-          secureTextEntry
-          autoCapitalize="none"
-          value={nueva}
-          onChangeText={setNueva}
-        />
+        <View>
+          <Campo
+            etiqueta="Nueva Contraseña"
+            placeholder="Mínimo 8 caracteres"
+            revelable
+            autoCapitalize="none"
+            value={nueva}
+            onChangeText={setNueva}
+          />
+          {nueva.length > 0 ? <MedidorClave clave={nueva} /> : null}
+        </View>
         <Campo
           etiqueta="Confirmar Nueva Contraseña"
           placeholder="Repite la contraseña"
-          secureTextEntry
+          revelable
           autoCapitalize="none"
           value={confirmar}
           onChangeText={setConfirmar}

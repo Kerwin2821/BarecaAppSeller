@@ -6,14 +6,14 @@ import { useApi } from '@/hooks/useApi'
 import { teamApi, userApi } from '@/lib/endpoints'
 import { mensajeDeError } from '@/lib/api'
 import { actorUuid, etiquetaRol } from '@/lib/roles'
-import { fechaCorta, fechaHora } from '@/lib/formato'
+import { fechaHora, iniciales } from '@/lib/formato'
 import { compartirCSV, compartirPDF, htmlReporte, type Celda } from '@/lib/exportar'
 import type { CurrentUser, UserRole } from '@/lib/tipos'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
 import { Modal } from '@/components/Modal'
 import { useToast } from '@/components/Toast'
-import { Alerta, Boton, Campo, Chip, Tarjeta } from '@/components/Ui'
+import { Alerta, Avatar, Boton, Campo, Chip, Tarjeta } from '@/components/Ui'
 import { color, fuenteMono } from '@/lib/tema'
 
 type Tab = 'offices' | 'distributors' | 'kiosks' | 'employees'
@@ -102,12 +102,15 @@ export default function Equipo() {
   const tabs = useMemo(() => tabsPorRol(user?.role), [user?.role])
   const [tab, setTab] = useState<Tab>(tabs[0]?.id ?? 'kiosks')
   const [crearAbierto, setCrearAbierto] = useState(false)
+  const [editando, setEditando] = useState<any | null>(null)
   const [busca, setBusca] = useState('')
   const [exportando, setExportando] = useState<'csv' | 'pdf' | null>(null)
   // Entidades recién creadas en esta sesión, para mostrarlas de inmediato aunque el
   // backend tarde en reflejarlas (o no las vincule) en la jerarquía.
   const [extras, setExtras] = useState<{ tab: Tab; e: any }[]>([])
   const nuevoRol = rolCreable(user?.role)
+  // El nivel que el usuario crea es también el que puede editar (sus hijos directos).
+  const tabEditable: Tab | null = nuevoRol ? TAB_DE_ROL[nuevoRol] : null
 
   const cargar = useCallback(async () => {
     const r = await userApi.teamHierarchy(paramsJerarquia(user))
@@ -301,7 +304,13 @@ export default function Equipo() {
       ) : (
         <View style={{ gap: 12 }}>
           {filtrados.map((e, i) => (
-            <FilaEntidad key={e.id ?? i} e={e} tab={tab} />
+            <FilaEntidad
+              key={e.id ?? i}
+              e={e}
+              tab={tab}
+              editable={tab === tabEditable && !e._local && e.id != null}
+              onEditar={() => setEditando(e)}
+            />
           ))}
         </View>
       )}
@@ -326,6 +335,17 @@ export default function Equipo() {
           }}
         />
       ) : null}
+
+      <ModalEditarEntidad
+        entidad={editando}
+        tab={tab}
+        user={user}
+        onCerrar={() => setEditando(null)}
+        onListo={() => {
+          setEditando(null)
+          recargar()
+        }}
+      />
     </Pantalla>
   )
 }
@@ -574,38 +594,341 @@ function ModalCrearEntidad({
   )
 }
 
-function FilaEntidad({ e, tab }: { e: any; tab: Tab }) {
+/* ══════════════════════════════════════════════════════════
+   Modal: editar entidad (datos del administrador + comisiones), como la web
+   ══════════════════════════════════════════════════════════ */
+const CFG_EDIT: Record<Tab, { uuidField: string; nodoParam: string; nodoField: string; empParam: string; tipoActor: string }> = {
+  offices: { uuidField: 'oficinaRegionalId', nodoParam: 'nodoOficinaId.equals', nodoField: 'nodoOficinaId', empParam: 'oficinasRegionalesId.equals', tipoActor: 'OFICINA_REGIONAL' },
+  distributors: { uuidField: 'distribuidorId', nodoParam: 'nodoDistribuidorId.equals', nodoField: 'nodoDistribuidorId', empParam: 'distribuidoresId.equals', tipoActor: 'DISTRIBUIDOR' },
+  kiosks: { uuidField: 'kioscosPuestosId', nodoParam: 'nodoKioscoId.equals', nodoField: 'nodoKioscoId', empParam: 'kioscosPuestosId.equals', tipoActor: 'KIOSCO' },
+  employees: { uuidField: '', nodoParam: '', nodoField: '', empParam: '', tipoActor: '' },
+}
+const aArr = (r: any): any[] => (Array.isArray(r) ? r : (r?.data ?? []))
+/** Teléfono a formato internacional (igual que FormatService.toInternationalFormat de la web). */
+function aInternacional(phone: string): string {
+  if (!phone) return ''
+  let limpio = phone.replace(/\D/g, '')
+  if (limpio.startsWith('58')) return `+${limpio}`
+  if (limpio.startsWith('0')) limpio = limpio.substring(1)
+  return `58${limpio}`
+}
+
+type ItemEdit = { productId: string; productName: string; min: number; max: number; on: boolean; pct: string }
+
+function ModalEditarEntidad({
+  entidad,
+  tab,
+  user,
+  onCerrar,
+  onListo,
+}: {
+  entidad: any | null
+  tab: Tab
+  user: CurrentUser | null
+  onCerrar: () => void
+  onListo: () => void
+}) {
+  const { avisar } = useToast()
+  const abierto = !!entidad
+  const cfg = CFG_EDIT[tab]
+  const numId = entidad?.id
+  const uuid = entidad?.[cfg.uuidField]
+
+  const [nombres, setNombres] = useState('')
+  const [apellidos, setApellidos] = useState('')
+  const [documento, setDocumento] = useState('')
+  const [correo, setCorreo] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [adminEmpleadoId, setAdminEmpleadoId] = useState<string | null>(null)
+  const [existentes, setExistentes] = useState<any[]>([])
+  const [items, setItems] = useState<ItemEdit[]>([])
+  const [cargando, setCargando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!abierto || !user || numId == null) return
+    setCargando(true)
+    setError(null)
+    const actorUuidCreador = actorUuid(user) ?? ''
+    Promise.all([
+      teamApi.comisionesNodos({ [cfg.nodoParam]: numId, 'activo.equals': 'true', page: 0, size: 1000 }).then(aArr).catch(() => []),
+      teamApi.empleadosDe({ [cfg.empParam]: numId, page: 0, size: 1000 }).then(aArr).catch(() => []),
+      userApi.productos().then(aArr).catch(() => []),
+      actorUuidCreador ? teamApi.comisionesMinima(user.role, actorUuidCreador).then(aArr).catch(() => []) : Promise.resolve([] as any[]),
+    ])
+      .then(async ([comis, emps, prods, minima]) => {
+        setExistentes(comis)
+        const admin = emps[0]
+        if (admin) {
+          setNombres(admin.nombres ?? '')
+          setApellidos(admin.apellidos ?? '')
+          setDocumento(admin.numeroDocumento ?? '')
+          setAdminEmpleadoId(admin.empleadoId ?? null)
+          if (admin.id != null) {
+            const [ce, te] = await Promise.all([
+              teamApi.correosEmpleados({ 'empleadosId.equals': admin.id, page: 0, size: 5 }).then(aArr).catch(() => []),
+              teamApi.telefonosEmpleados({ 'empleadosId.equals': admin.id, page: 0, size: 5 }).then(aArr).catch(() => []),
+            ])
+            setCorreo(ce[0]?.correo ?? '')
+            setTelefono(te[0]?.telefonoNacional ?? '')
+          }
+        }
+        const caps = new Map<string, { min: number; max: number }>()
+        for (const c of minima) {
+          const pid = c?.productos?.productoId ?? c?.productoId
+          if (pid) caps.set(String(pid).toUpperCase(), { min: c?.comisionMinima ?? 0, max: c?.porcentajeComision ?? 0 })
+        }
+        const base: ItemEdit[] = prods
+          .filter((p: any) => p.productoId && (user.role === 'BARECA' || caps.has(String(p.productoId).toUpperCase())))
+          .map((p: any) => {
+            const cap = caps.get(String(p.productoId).toUpperCase()) ?? { min: 0, max: 100 }
+            const ex = comis.find((c: any) => (c?.productos?.productoId ?? c?.productoId) === p.productoId)
+            return {
+              productId: p.productoId,
+              productName: p.nombre ?? p.productoId,
+              min: cap.min,
+              max: cap.max,
+              on: !!ex,
+              pct: ex ? String(ex.porcentajeComision ?? cap.max) : String(cap.max),
+            }
+          })
+        setItems(base)
+      })
+      .finally(() => setCargando(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto, numId])
+
+  const setItem = (id: string, patch: Partial<ItemEdit>) =>
+    setItems((arr) => arr.map((it) => (it.productId === id ? { ...it, ...patch } : it)))
+
+  const construirComision = (pct: number, it: ItemEdit, obs: string): any => {
+    const payload: any = {
+      tipoActor: cfg.tipoActor,
+      porcentajeComision: pct,
+      porcentajeConfigurado: cfg.tipoActor === 'OFICINA_REGIONAL' ? it.max : 0,
+      observaciones: obs,
+      productoId: it.productId,
+      nodoBarecaId: null,
+      nodoOficinaId: null,
+      nodoDistribuidorId: null,
+      nodoKioscoId: null,
+      padreBarecaId: null,
+      padreOficinaId: null,
+      padreDistribuidorId: null,
+    }
+    payload[cfg.nodoField] = uuid
+    if (user?.role === 'BARECA') payload.padreBarecaId = user.barecaId
+    else if (user?.role === 'OFICINA_REGIONAL') payload.padreOficinaId = user.oficinaRegionalId
+    else if (user?.role === 'DISTRIBUIDOR') payload.padreDistribuidorId = user.distribuidorId
+    return payload
+  }
+
+  const guardar = async () => {
+    if (enviando || !user) return
+    if (!nombres.trim() || !apellidos.trim()) {
+      setError('Completa nombres y apellidos del administrador.')
+      return
+    }
+    if (!/.+@.+\..+/.test(correo)) {
+      setError('Ingresa un correo válido.')
+      return
+    }
+    const activos = items.filter((i) => i.on)
+    for (const it of activos) {
+      const v = Number(it.pct)
+      if (it.pct.trim() === '' || Number.isNaN(v)) {
+        setError(`Indica la comisión de "${it.productName}".`)
+        return
+      }
+      if (v > it.max) {
+        setError(`La comisión de "${it.productName}" no puede superar ${it.max}%.`)
+        return
+      }
+      if (v < it.min) {
+        setError(`La comisión de "${it.productName}" no puede ser menor a ${it.min}%.`)
+        return
+      }
+    }
+    setEnviando(true)
+    setError(null)
+    try {
+      if (adminEmpleadoId) {
+        await teamApi
+          .updateEmpleado(adminEmpleadoId, {
+            nombres: nombres.trim(),
+            apellidos: apellidos.trim(),
+            numeroDocumento: documento.trim(),
+            correo: correo.trim(),
+            telefono: aInternacional(telefono.trim()),
+          })
+          .catch(() => undefined)
+      }
+      const tareas: Promise<any>[] = []
+      const pidExistentes = existentes.map((d) => d?.productos?.productoId ?? d?.productoId)
+      for (const ex of existentes) {
+        const pid = ex?.productos?.productoId ?? ex?.productoId
+        const upd = activos.find((a) => a.productId === pid)
+        if (upd) {
+          if (Number(ex.porcentajeComision) !== Number(upd.pct)) {
+            tareas.push(teamApi.assignCommission(construirComision(Number(upd.pct), upd, `Actualización: ${upd.productName}`)))
+          }
+        } else if (ex.activo) {
+          tareas.push(teamApi.updateCommission(ex.id, { ...ex, activo: false }))
+        }
+      }
+      for (const a of activos) {
+        if (!pidExistentes.includes(a.productId)) {
+          tareas.push(teamApi.assignCommission(construirComision(Number(a.pct), a, `Creación: ${a.productName}`)))
+          tareas.push(
+            teamApi.assignActorProduct({
+              tipoActor: cfg.tipoActor,
+              actorId: uuid,
+              productoId: a.productId,
+              fechaCreacion: new Date().toISOString(),
+              fechaFinalizacion: null,
+              activo: true,
+            }),
+          )
+        }
+      }
+      await Promise.allSettled(tareas)
+      avisar('Cambios guardados.', 'ok')
+      onListo()
+    } catch (e) {
+      setError(mensajeDeError(e))
+      setEnviando(false)
+    }
+  }
+
+  const nombreEntidad = entidad?.nombre || `${nombres} ${apellidos}`.trim()
+
+  return (
+    <Modal abierto={abierto} onCerrar={onCerrar} titulo={`Editar ${etiquetaRol(cfg.tipoActor as UserRole)}`} subtitulo={nombreEntidad || undefined}>
+      {cargando ? (
+        <View style={{ gap: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} w="100%" h={44} />
+          ))}
+        </View>
+      ) : (
+        <View>
+          <Text style={est.comTitulo}>Datos del administrador</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+            <Campo etiqueta="Nombres" value={nombres} onChangeText={setNombres} style={{ flex: 1 }} />
+            <Campo etiqueta="Apellidos" value={apellidos} onChangeText={setApellidos} style={{ flex: 1 }} />
+          </View>
+          <Campo etiqueta="Documento" autoCapitalize="characters" value={documento} onChangeText={setDocumento} style={{ marginTop: 12 }} />
+          <Campo etiqueta="Correo" keyboardType="email-address" autoCapitalize="none" value={correo} onChangeText={setCorreo} style={{ marginTop: 12 }} />
+          <Campo etiqueta="Teléfono" keyboardType="phone-pad" value={telefono} onChangeText={setTelefono} style={{ marginTop: 12 }} />
+
+          <Text style={est.comTitulo}>Comisiones por producto</Text>
+          <Text style={est.comAyuda}>Activa un producto y ajusta su porcentaje (no puede superar tu comisión asignada).</Text>
+          {items.length === 0 ? (
+            <Alerta tipo="info">No hay productos con comisión asignable.</Alerta>
+          ) : (
+            <ScrollView style={{ maxHeight: 220, marginTop: 6 }} nestedScrollEnabled>
+              {items.map((it) => (
+                <View key={it.productId} style={est.comFila}>
+                  <Switch
+                    value={it.on}
+                    onValueChange={(v) => setItem(it.productId, { on: v })}
+                    trackColor={{ true: color.primary, false: '#CBD5E1' }}
+                    thumbColor="#fff"
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={est.comNombre} numberOfLines={1}>
+                      {it.productName}
+                    </Text>
+                    <Text style={est.comTope}>
+                      Máx {it.max}%{it.min > 0 ? ` · Mín ${it.min}%` : ''}
+                    </Text>
+                  </View>
+                  <View style={est.comPct}>
+                    <TextInput
+                      value={it.pct}
+                      onChangeText={(t) => setItem(it.productId, { pct: t.replace(/[^0-9.]/g, '') })}
+                      editable={it.on}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={color.text4}
+                      style={[est.comInput, !it.on && { opacity: 0.4 }]}
+                    />
+                    <Text style={est.comPctSign}>%</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {error ? (
+            <View style={{ marginTop: 12 }}>
+              <Alerta tipo="error">{error}</Alerta>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+            <Boton texto="Cancelar" variante="soft" onPress={onCerrar} style={{ flex: 1 }} />
+            <Boton texto={enviando ? 'Guardando…' : 'Guardar cambios'} onPress={guardar} cargando={enviando} style={{ flex: 1.5 }} />
+          </View>
+        </View>
+      )}
+    </Modal>
+  )
+}
+
+function FilaMeta({ icon, v }: { icon: string; v: string }) {
+  return (
+    <View style={est.metaRow}>
+      <Text style={est.metaIcon}>{icon}</Text>
+      <Text style={est.metaTxt} numberOfLines={1}>
+        {v}
+      </Text>
+    </View>
+  )
+}
+
+function FilaEntidad({ e, tab, editable, onEditar }: { e: any; tab: Tab; editable: boolean; onEditar: () => void }) {
   const nombre = e.nombre || `${e.nombres ?? ''} ${e.apellidos ?? ''}`.trim() || '—'
   const activo = e.activo !== false
   const correo = e.correo ?? e.email ?? null
   const telefono = e.telefonoCelular ?? e.telefono ?? null
   const padre = tab === 'kiosks' ? e.distribuidores?.nombre : tab === 'distributors' ? e.oficinasRegionales?.nombre : null
+  const tieneMeta = correo || telefono || padre || e.codigo
   return (
-    <Tarjeta style={{ padding: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+    <Tarjeta style={{ padding: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Avatar texto={iniciales(nombre)} size={44} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={est.nombre} numberOfLines={1}>
             {nombre}
           </Text>
           {e.numeroDocumento ? <Text style={est.detalle}>{e.numeroDocumento}</Text> : null}
-          {correo || telefono ? (
-            <Text style={est.detalle} numberOfLines={1}>
-              {[correo, telefono].filter(Boolean).join('  ·  ')}
-            </Text>
-          ) : null}
-          {padre ? <Text style={est.detalle} numberOfLines={1}>Depende de: {padre}</Text> : null}
-          {e.fechaCreacion ? <Text style={est.fecha}>Creado {fechaCorta(e.fechaCreacion)}</Text> : null}
         </View>
-        <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <View style={{ alignItems: 'flex-end', gap: 5 }}>
           <Chip
             texto={activo ? 'Activo' : 'Inactivo'}
             fondo={activo ? color.successBg : color.borderSoft}
             colorTexto={activo ? color.success : color.text3}
           />
           {e._local ? <Text style={est.sincro}>Sincronizando…</Text> : null}
-          {e.codigo ? <Text style={est.codigo}>cód. {e.codigo}</Text> : null}
         </View>
       </View>
+
+      {tieneMeta ? (
+        <View style={est.metaBox}>
+          {correo ? <FilaMeta icon="✉️" v={correo} /> : null}
+          {telefono ? <FilaMeta icon="📞" v={telefono} /> : null}
+          {padre ? <FilaMeta icon="🏢" v={`Depende de: ${padre}`} /> : null}
+          {e.codigo ? <FilaMeta icon="🔖" v={`Código ${e.codigo}`} /> : null}
+        </View>
+      ) : null}
+
+      {editable ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+          <Boton texto="Editar" variante="soft" onPress={onEditar} />
+        </View>
+      ) : null}
     </Tarjeta>
   )
 }
@@ -629,6 +952,10 @@ const est = StyleSheet.create({
   buscadorInput: { flex: 1, paddingVertical: 10, fontSize: 13.5, color: color.text },
   nombre: { fontSize: 14, fontWeight: '800', color: color.text },
   detalle: { fontSize: 11.5, color: color.text2, marginTop: 3 },
+  metaBox: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: color.borderSoft, gap: 6 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  metaIcon: { fontSize: 12, width: 18 },
+  metaTxt: { flex: 1, fontSize: 12, color: color.text2 },
   fecha: { fontSize: 11, color: color.text4, marginTop: 4 },
   codigo: { fontSize: 11, color: color.text3, fontFamily: fuenteMono },
   sincro: { fontSize: 10, color: color.warning, fontWeight: '700' },

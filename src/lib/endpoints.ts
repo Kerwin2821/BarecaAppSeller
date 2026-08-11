@@ -429,6 +429,27 @@ export const teamApi = {
    */
   comisionesMinima: (tipoActor: string, actorUuid: string) =>
     bff<any[]>('/users/comisiones-nodos/v1/comisiones-nodos/minima', { params: { tipoActor, actorUuid } }),
+
+  // ── Edición de entidad (datos del admin + comisiones), como la web ──
+  /** Comisiones asignadas actuales del nodo (activas). */
+  comisionesNodos: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/comisiones-nodos', { params }),
+  /** Empleado(s) de una entidad (el admin/vendedor). */
+  empleadosDe: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/empleados', { params }),
+  correosEmpleados: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/correos-empleados', { params }),
+  telefonosEmpleados: (params: Record<string, string | number | undefined>) =>
+    bff<any>('/users/telefonos-empleados', { params }),
+  /** Actualiza los datos del empleado/administrador (PUT por UUID). */
+  updateEmpleado: (empleadoId: string, body: unknown) =>
+    bff<any>(`/users/empleados/v1/empleados/${encodeURIComponent(empleadoId)}`, { method: 'PUT', body }),
+  /** Asigna/crea una comisión por producto al nodo (POST). */
+  assignCommission: (body: unknown) => bff<any>('/users/comisiones-nodos/v1/comisiones-nodo', { method: 'POST', body }),
+  /** Desactiva/actualiza una comisión existente (PATCH por id numérico). */
+  updateCommission: (id: number, body: unknown) => bff<any>(`/users/comisiones-nodos/${id}`, { method: 'PATCH', body }),
+  /** Asocia un producto nuevo al actor (POST). */
+  assignActorProduct: (body: unknown) => bff<any>('/users/actor-productos/asignar', { method: 'POST', body }),
 }
 
 // ── Staging de cliente + vehículo (antes de crear la orden) ─

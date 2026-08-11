@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Pressable,
   StyleSheet,
@@ -79,22 +79,34 @@ export function Campo({
   etiqueta,
   error = false,
   mono = false,
+  revelable = false,
   style,
   ...props
-}: TextInputProps & { etiqueta?: string; error?: boolean; mono?: boolean }) {
+}: TextInputProps & { etiqueta?: string; error?: boolean; mono?: boolean; revelable?: boolean }) {
+  const [oculto, setOculto] = useState(true)
+  const secure = revelable ? oculto : props.secureTextEntry
   return (
     <View style={style as StyleProp<ViewStyle>}>
       {etiqueta ? <Text style={est.campoEtiqueta}>{etiqueta}</Text> : null}
-      <TextInput
-        placeholderTextColor={color.text4}
-        {...props}
-        style={[
-          est.campo,
-          mono && { fontFamily: fuenteMono, fontSize: 13 },
-          error && { borderColor: color.danger },
-          props.editable === false && { backgroundColor: color.bgCard, color: color.text2 },
-        ]}
-      />
+      <View style={{ justifyContent: 'center' }}>
+        <TextInput
+          placeholderTextColor={color.text4}
+          {...props}
+          secureTextEntry={secure}
+          style={[
+            est.campo,
+            revelable && { paddingRight: 46 },
+            mono && { fontFamily: fuenteMono, fontSize: 13 },
+            error && { borderColor: color.danger },
+            props.editable === false && { backgroundColor: color.bgCard, color: color.text2 },
+          ]}
+        />
+        {revelable ? (
+          <Pressable onPress={() => setOculto((v) => !v)} style={est.ojo} hitSlop={8}>
+            <Text style={{ fontSize: 17 }}>{oculto ? '👁️' : '🙈'}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   )
 }
@@ -190,6 +202,7 @@ const est = StyleSheet.create({
     color: color.text,
     backgroundColor: color.white,
   },
+  ojo: { position: 'absolute', right: 8, padding: 6 },
   alerta: { borderWidth: 1, borderRadius: radio.md + 2, paddingVertical: 11, paddingHorizontal: 14 },
   pildora: {
     alignSelf: 'flex-start',
