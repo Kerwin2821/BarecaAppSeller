@@ -72,6 +72,16 @@ const LOGOS_ASEG: { re: RegExp; src: number }[] = [
   { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
 ]
 
+/** Logo por plataforma de cobro (gateway): R4 / Banco Plaza. */
+const LOGO_GATEWAY_R4 = require('../../assets/bancos/r4-logo.png')
+const LOGO_GATEWAY_PLAZA = require('../../assets/bancos/banco-plaza-logo.png')
+function logoGateway(g: { id?: string; nombre?: string }): number | null {
+  const k = `${g?.id ?? ''} ${g?.nombre ?? ''}`.toLowerCase()
+  if (k.includes('plaza')) return LOGO_GATEWAY_PLAZA
+  if (k.includes('r4') || k.includes('red4')) return LOGO_GATEWAY_R4
+  return null
+}
+
 /** Muestra el logo (a color) de la aseguradora sobre un fondo blanco para que se
  *  vea igual en tarjetas claras y en las seleccionadas (fondo azul). */
 function LogoAseg({ nombre, alto = 28 }: { nombre?: string; fondoOscuro?: boolean; alto?: number }) {
@@ -1101,11 +1111,24 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                         <View style={{ gap: 8 }}>
                           <Text style={est.label}>Plataforma de cobro</Text>
                           <View style={{ flexDirection: 'row', gap: 10 }}>
-                            {pago.gateways.map((g) => (
-                              <Pressable key={g.id} onPress={() => setGatewayPago(g.id)} style={[est.metodoBtn, gatewayPago === g.id && est.metodoBtnOn]}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: gatewayPago === g.id ? '#fff' : color.text2 }}>{g.nombre}</Text>
-                              </Pressable>
-                            ))}
+                            {pago.gateways.map((g) => {
+                              const logoG = logoGateway(g)
+                              const selG = gatewayPago === g.id
+                              return (
+                                <Pressable
+                                  key={g.id}
+                                  onPress={() => setGatewayPago(g.id)}
+                                  style={[est.metodoBtn, selG && est.metodoBtnOn, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
+                                >
+                                  {logoG ? (
+                                    <View style={{ backgroundColor: '#fff', borderRadius: 4, paddingHorizontal: 3, paddingVertical: 2 }}>
+                                      <Image source={logoG} resizeMode="contain" style={{ width: 30, height: 15 }} />
+                                    </View>
+                                  ) : null}
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: selG ? '#fff' : color.text2 }}>{g.nombre}</Text>
+                                </Pressable>
+                              )
+                            })}
                           </View>
                         </View>
                       ) : null}
