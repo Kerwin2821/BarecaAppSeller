@@ -414,13 +414,16 @@ export function useEmisionPago() {
     //    REUSA su id; solo si no existe se registra. Evita el "Registro de vehículo
     //    no existe" cuando la placa ya fue registrada (p.ej. en un reintento).
     if (sd.tipo === 'rcv') {
-      let vehId = ''
       const placa = (c.placa ?? '').trim().toUpperCase()
-      if (placa) {
-        const existentes = await vehiculoRegApi.porPlaca(placa).catch(() => [] as any[])
-        const arr = Array.isArray(existentes) ? existentes : ((existentes as { data?: any[] })?.data ?? [])
-        if (arr.length > 0 && arr[0]?.id) vehId = String(arr[0].id)
+      // Reutiliza/recupera el registro por placa (como el portal). Sirve para evitar
+      // duplicados Y para obtener el id cuando el POST de creación no lo devuelve.
+      const buscarVehPorPlaca = async (): Promise<string> => {
+        if (!placa) return ''
+        const ex = await vehiculoRegApi.porPlaca(placa).catch(() => [] as any[])
+        const arr = Array.isArray(ex) ? ex : ((ex as any)?.data ?? (ex as any)?.content ?? [])
+        return arr.length > 0 && arr[0]?.id ? String(arr[0].id) : ''
       }
+      let vehId = await buscarVehPorPlaca()
       if (!vehId) {
         const r = await vehiculoRegApi.addRegistro({
           peso: '0',
@@ -443,9 +446,14 @@ export function useEmisionPago() {
         }).catch((e) => {
           throw new Error(`al registrar el vehículo — ${mensajeDeError(e)}`)
         })
-        vehId = r?.data?.id ?? ''
+        vehId = String((r as any)?.data?.id ?? (r as any)?.id ?? (r as any)?.data?.data?.id ?? '')
+        // Si el POST creó el vehículo pero no devolvió el id, lo recuperamos por placa.
+        if (!vehId) vehId = await buscarVehPorPlaca()
+        if (!vehId) {
+          const detalle = (r as any)?.message || (r as any)?.error?.message || JSON.stringify(r ?? {}).slice(0, 240)
+          throw new Error(`al registrar el vehículo — respuesta sin id (${detalle})`)
+        }
       }
-      if (!vehId) throw new Error('al registrar el vehículo — no se obtuvo el id del registro.')
       orden.current.registroVehiculoId = vehId
     }
   }, [])

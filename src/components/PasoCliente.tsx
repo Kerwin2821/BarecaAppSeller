@@ -176,6 +176,7 @@ export function PasoCliente({
   onContinuar,
   mostrarVehiculo = true,
   express = false,
+  scrollRef,
 }: {
   onAtras: () => void
   onContinuar: (datos: DatosCliente) => void
@@ -183,6 +184,8 @@ export function PasoCliente({
   mostrarVehiculo?: boolean
   /** En Venta Express la cédula usa el OCR de `/ai/extract-cedula`. */
   express?: boolean
+  /** ScrollView del wizard: para saltar a un campo faltante al tocar su chip. */
+  scrollRef?: { current: { scrollTo: (o: { y: number; animated?: boolean }) => void } | null } | null
 }) {
   const { avisar } = useToast()
   const [d, setD] = useState<DatosCliente>({
@@ -213,6 +216,22 @@ export function PasoCliente({
   const [ocrCarnetCargando, setOcrCarnetCargando] = useState(false)
   const [camara, setCamara] = useState<null | 'cedula' | 'carnet'>(null)
   const [motorIgual, setMotorIgual] = useState(false)
+
+  // Al tocar un chip de "falta completar", salta a esa tarjeta (Y medido con onLayout).
+  const posY = useRef<Record<string, number>>({})
+  const baseY = useRef(0)
+  const irAFaltante = (f: string) => {
+    const key =
+      f.startsWith('Correo') || f.startsWith('Teléfono')
+        ? 'contacto'
+        : f === 'Estado'
+          ? 'direccion'
+          : f.startsWith('Placa') || f.startsWith('Serial') || f.startsWith('Versión')
+            ? 'vehiculo'
+            : 'tomador'
+    const y = posY.current[key]
+    if (y != null) scrollRef?.current?.scrollTo({ y: Math.max(0, baseY.current + y - 10), animated: true })
+  }
 
   // "Igual a Carrocería": el serial del motor copia el de la carrocería (NIV).
   const alternarMotorIgual = (v: boolean) => {
@@ -449,7 +468,8 @@ export function PasoCliente({
         placaChk !== 'checking' &&
         d.placa.trim().length > 0 &&
         d.serialNiv.trim().length > 0 &&
-        d.serialMotor.trim().length > 0))
+        d.serialMotor.trim().length > 0 &&
+        d.version.trim().length > 0))
 
   // Qué falta para habilitar "Continuar" (para avisarle al vendedor).
   const verificandoCampos =
@@ -466,12 +486,13 @@ export function PasoCliente({
   if (mostrarVehiculo && d.placa.trim().length === 0) faltantes.push('Placa')
   if (mostrarVehiculo && d.serialNiv.trim().length === 0) faltantes.push('Serial de carrocería')
   if (mostrarVehiculo && d.serialMotor.trim().length === 0) faltantes.push('Serial del motor')
+  if (mostrarVehiculo && d.version.trim().length === 0) faltantes.push('Versión del vehículo')
   if (mostrarVehiculo && placaChk === 'existe') faltantes.push('Placa con póliza vigente')
 
   const fechaNac = d.fechaNacimiento ? new Date(`${d.fechaNacimiento}T12:00:00`) : new Date(2000, 0, 1)
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 12 }} onLayout={(e) => { baseY.current = e.nativeEvent.layout.y }}>
       {/* ── Captura con OCR ──────────────────────────────────── */}
       <Tarjeta style={{ padding: 18, gap: 12 }}>
         <Text style={est.titulo}>Captura con OCR</Text>
@@ -506,7 +527,7 @@ export function PasoCliente({
         }}
       />
 
-      <Tarjeta style={{ padding: 18, gap: 14 }}>
+      <Tarjeta style={{ padding: 18, gap: 14 }} onLayout={(e) => { posY.current.tomador = e.nativeEvent.layout.y }}>
         <Text style={est.titulo}>Datos del Tomador</Text>
         {error ? <Alerta tipo="error">{error}</Alerta> : null}
 
@@ -554,7 +575,7 @@ export function PasoCliente({
         </View>
       </Tarjeta>
 
-      <Tarjeta style={{ padding: 18, gap: 14 }}>
+      <Tarjeta style={{ padding: 18, gap: 14 }} onLayout={(e) => { posY.current.contacto = e.nativeEvent.layout.y }}>
         <Text style={est.titulo}>Datos de Contacto</Text>
         <Text style={est.hint}>Para enviar la póliza y notificaciones al cliente.</Text>
         <View>
@@ -584,7 +605,7 @@ export function PasoCliente({
       </Tarjeta>
 
       {mostrarVehiculo ? (
-      <Tarjeta style={{ padding: 18, gap: 14 }}>
+      <Tarjeta style={{ padding: 18, gap: 14 }} onLayout={(e) => { posY.current.vehiculo = e.nativeEvent.layout.y }}>
         <Text style={est.titulo}>Datos del Vehículo</Text>
         <Text style={est.hint}>Selecciona el vehículo del catálogo; los seriales vienen del carnet.</Text>
         <VehiculoCatalogo prefill={ocrPrefill} onSeleccion={aplicarSeleccionVehiculo} />
@@ -636,7 +657,7 @@ export function PasoCliente({
       </Tarjeta>
       ) : null}
 
-      <Tarjeta style={{ padding: 18, gap: 14 }}>
+      <Tarjeta style={{ padding: 18, gap: 14 }} onLayout={(e) => { posY.current.direccion = e.nativeEvent.layout.y }}>
         <Text style={est.titulo}>Dirección del Asegurado</Text>
         <Text style={est.hint}>
           {ubicando ? '📍 Detectando tu ubicación…' : 'Estado, municipio y ciudad se completan por GPS; puedes corregirlos.'}
@@ -656,9 +677,9 @@ export function PasoCliente({
               <Text style={est.faltanTitulo}>Para continuar, completa:</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                 {faltantes.map((f) => (
-                  <View key={f} style={est.faltanChip}>
+                  <Pressable key={f} onPress={() => irAFaltante(f)} style={est.faltanChip} hitSlop={4}>
                     <Text style={est.faltanChipTexto}>{f}</Text>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             </>

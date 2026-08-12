@@ -27,6 +27,10 @@ interface Nodo {
 
 // Región inicial del mapa centrada en Venezuela.
 const REGION_VE = { latitude: 8.0, longitude: -66.0, latitudeDelta: 8, longitudeDelta: 8 }
+// El mapa (Google Maps) EXIGE una API key en el build nativo; sin ella, MapView crashea
+// ("API key not found"). Por eso se muestra solo si se habilita explícitamente
+// (EXPO_PUBLIC_MAPS_ENABLED=true); si no, un fallback y la red se ve en la lista.
+const MAPS_ENABLED = process.env.EXPO_PUBLIC_MAPS_ENABLED === 'true'
 
 // Claves candidatas por campo (la forma del subárbol es incierta → muy defensivo).
 const NOMBRE_KEYS = ['nombre', 'nombreCompleto', 'nombreActor', 'nombreEntidad', 'razonSocial', 'descripcion']
@@ -184,6 +188,7 @@ export default function MapaConexiones() {
       ) : (
         <>
           <View style={est.mapaWrap}>
+            {MAPS_ENABLED ? (
             <MapView style={est.mapa} initialRegion={REGION_VE}>
               {ubicados.map((n) => (
                 <Marker
@@ -194,6 +199,17 @@ export default function MapaConexiones() {
                 />
               ))}
             </MapView>
+            ) : (
+              <View style={[est.mapa, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF1F7', padding: 24 }]}>
+                <Text style={{ fontSize: 34 }}>🗺️</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: color.text, marginTop: 8, textAlign: 'center' }}>
+                  Mapa no disponible en esta versión
+                </Text>
+                <Text style={{ fontSize: 12, color: color.text3, marginTop: 4, textAlign: 'center', lineHeight: 17 }}>
+                  Tu red comercial se muestra abajo en la lista.
+                </Text>
+              </View>
+            )}
             {ubicados.length > 0 ? (
               <View style={est.badge}>
                 <Text style={est.badgeTexto}>{ubicados.length} ubicado{ubicados.length === 1 ? '' : 's'}</Text>

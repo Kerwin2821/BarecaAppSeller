@@ -841,6 +841,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
         ) : paso === 1 ? (
           // ── Paso 2 · Datos del Cliente ─────────────────────────
           <PasoCliente
+            scrollRef={scrollRef}
             mostrarVehiculo={!esFunerario}
             express={express}
             onAtras={() => setPaso(0)}

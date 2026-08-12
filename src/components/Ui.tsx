@@ -14,8 +14,8 @@ import { Spinner } from './Estados'
 import { color, fuenteMono, radio, sombra } from '../lib/tema'
 
 /** Tarjeta blanca con borde suave, equivalente al .card del portal. */
-export function Tarjeta({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
-  return <View style={[est.tarjeta, style]}>{children}</View>
+export function Tarjeta({ children, style, onLayout }: { children: ReactNode; style?: StyleProp<ViewStyle>; onLayout?: (e: any) => void }) {
+  return <View style={[est.tarjeta, style]} onLayout={onLayout}>{children}</View>
 }
 
 type VarianteBoton = 'primary' | 'accent' | 'soft' | 'ghost' | 'peligro' | 'mini' | 'exito'

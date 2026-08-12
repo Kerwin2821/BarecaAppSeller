@@ -204,6 +204,15 @@ export function VehiculoCatalogo({
     [anioSel, marcas, marcaId, modelos, modeloId, versiones, sinDataAnio, emitir, emitirManual, versionTexto],
   )
 
+  // Versión por defecto: al cargar la lista de versiones, selecciona la PRIMERA
+  // automáticamente. Así el campo nunca queda vacío y el servicio siempre recibe un
+  // código de versión válido (catVersionAnioId), aunque el vendedor no toque el combo.
+  useEffect(() => {
+    if (versiones.length > 0 && !versionId && !versionManual) {
+      onVersion(versiones[0].id)
+    }
+  }, [versiones, versionId, versionManual, onVersion])
+
   // Prefill del OCR: matchea año→marca→modelo, deja la versión para el vendedor.
   const prefillKey = `${prefill?.marca ?? ''}|${prefill?.modelo ?? ''}|${prefill?.anio ?? ''}`
   useEffect(() => {
