@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, findNodeHandle, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
@@ -107,13 +107,17 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const scrollRef = useRef<ScrollView>(null)
   const refCotizar = useRef<View>(null)
   const refPlanes = useRef<View>(null)
+  const scrollY = useRef(0)
   const desplazarA = useCallback((ref: { current: View | null }) => {
     const sv = scrollRef.current
-    const node = ref.current
-    if (!sv || !node) return
-    const handle = findNodeHandle(sv)
-    if (handle == null) return
-    node.measureLayout(handle as number, (_x, y) => sv.scrollTo({ y: Math.max(0, y - 16), animated: true }), () => {})
+    const node = ref.current as any
+    if (!sv || !node?.measure) return
+    // `measure` da pageY (posición absoluta en la ventana). El ScrollView arranca
+    // ~150px abajo (header + pasos); llevamos el marcador cerca de ese tope.
+    node.measure((_x: number, _y: number, _w: number, _h: number, _pageX: number, pageY: number) => {
+      if (typeof pageY !== 'number') return
+      sv.scrollTo({ y: Math.max(0, scrollY.current + pageY - 150), animated: true })
+    })
   }, [])
   // Al cambiar de paso, sube al inicio (p.ej. al pasar a Datos del Cliente → OCR).
   useEffect(() => {
@@ -525,7 +529,16 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
         })}
       </View>
 
-      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y
+        }}
+      >
         <Text style={est.titulo}>{express ? 'Venta Rápida RCV' : 'Nueva Solicitud'}</Text>
 
         {error ? (
