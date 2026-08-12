@@ -189,7 +189,7 @@ export function PasoCliente({
     cedula: '',
     nombres: '',
     apellidos: '',
-    genero: '',
+    genero: 'M', // Masculino por defecto
     fechaNacimiento: null,
     correo: '',
     telefono: '',

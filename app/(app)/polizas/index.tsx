@@ -36,7 +36,7 @@ const ESTADOS: { valor: 'ALL' | PolicyStatus; texto: string }[] = [
 
 /** Logo de la aseguradora (mismo criterio que el wizard: chip blanco, sin tinte). */
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
-  { re: /caroni/i, src: require('../../../assets/logos/logo-caroni-blanco.png') },
+  { re: /caroni/i, src: require('../../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../../assets/logos/logo-laoccidental.png') },
 ]
@@ -200,11 +200,8 @@ export default function MisVentas() {
 function LogoAseg({ nombre }: { nombre: string }) {
   const logo = LOGOS_ASEG.find((l) => l.re.test(nombre || ''))
   if (!logo) return null
-  return (
-    <View style={est.logoChip}>
-      <Image source={logo.src} resizeMode="contain" style={{ height: 16, width: 74 }} />
-    </View>
-  )
+  // Logo grande, integrado (sin recuadro) y alineado a la izquierda.
+  return <Image source={logo.src} resizeMode="contain" style={{ height: 24, width: 92, alignSelf: 'flex-start' }} />
 }
 
 function FilaPoliza({ p, onPress }: { p: DisplayPolicy; onPress: () => void }) {

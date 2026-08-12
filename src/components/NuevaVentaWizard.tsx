@@ -66,7 +66,7 @@ const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionD
 
 /** Logo de la aseguradora por nombre (igual que el quote-step del portal). */
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
-  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
 ]
@@ -534,7 +534,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       </View>
                     ) : null}
                     <Text style={est.cardEmoji}>{t.emoji}</Text>
-                    <Text style={[est.cardTexto, sel && { color: '#fff' }, !t.activo && { color: color.text4 }]}>{t.texto}</Text>
+                    <Text style={[est.cardTexto, sel && { color: color.primary }, !t.activo && { color: color.text4 }]}>{t.texto}</Text>
                   </Pressable>
                 )
               })}
@@ -555,8 +555,8 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       return (
                         <Pressable key={p.productoId} onPress={() => setProductoId(p.productoId)} style={est.col2}>
                           <Tarjeta style={[est.aseg, sel && est.asegSel]}>
-                            <LogoAseg nombre={p.nombre} fondoOscuro={sel} alto={30} />
-                            <Text style={[est.asegTexto, { marginTop: 8 }, sel && { color: '#fff' }]}>{p.nombre}</Text>
+                            <LogoAseg nombre={p.nombre} alto={30} />
+                            <Text style={[est.asegTexto, { marginTop: 8 }, sel && { color: color.primary }]}>{p.nombre}</Text>
                           </Tarjeta>
                         </Pressable>
                       )
@@ -1404,14 +1404,14 @@ const est = StyleSheet.create({
   },
   grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   col2: { width: '47%', flexGrow: 1 },
-  cardSel: { borderColor: color.primary, borderWidth: 2, backgroundColor: color.primary },
+  cardSel: { borderColor: color.primary, borderWidth: 2 },
   cardOff: { opacity: 0.6 },
   cardEmoji: { fontSize: 26, marginBottom: 6 },
   cardTexto: { fontSize: 13, fontWeight: '800', color: color.text, textAlign: 'center' },
   proxBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#4B5563', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 6 },
   proxTexto: { fontSize: 8.5, fontWeight: '700', color: '#fff' },
   aseg: { padding: 16, alignItems: 'center' },
-  asegSel: { backgroundColor: color.primary, borderColor: color.primary },
+  asegSel: { borderColor: color.primary, borderWidth: 2 },
   asegTexto: { fontSize: 13.5, fontWeight: '700', color: color.text, textAlign: 'center' },
   riesgo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   riesgoTexto: { flex: 1, fontSize: 12, color: color.text2, lineHeight: 17 },

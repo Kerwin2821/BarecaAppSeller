@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../lib/auth'
 import { actorUuid } from '../lib/roles'
@@ -29,35 +30,74 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
           ? user.kioskEntityId
           : user?.employeeEntityId
 
+  const loginId = user?.loginId ?? null
   const cargar = useCallback(
     async () => {
-      if (!perfil) return [] as Notificacion[]
-      const r = await notifApi.mine(perfil, destinoId ?? null)
-      return desenvolver(r) ?? []
+      if (!perfil) return { items: [] as Notificacion[], readIds: [] as number[] }
+      const [rMine, rRead] = await Promise.all([
+        notifApi.mine(perfil, destinoId ?? null),
+        loginId ? notifApi.read(loginId).catch(() => null) : Promise.resolve(null),
+      ])
+      const items = desenvolver(rMine) ?? []
+      const readIds = (rRead ? desenvolver(rRead) : []) ?? []
+      return { items, readIds }
     },
-    [perfil, destinoId],
+    [perfil, destinoId, loginId],
   )
-  const { datos } = useApi<Notificacion[]>(cargar, [perfil, destinoId])
-  // Leídas marcadas en esta sesión (además de las que ya vienen `leida` del backend).
-  const [leidas, setLeidas] = useState<Set<number>>(new Set())
-  const esLeida = (n: Notificacion) => n.leida || leidas.has(Number(n.id))
-  const noLeidas = (datos ?? []).filter((n) => !esLeida(n)).length
+  const { datos } = useApi<{ items: Notificacion[]; readIds: number[] }>(cargar, [perfil, destinoId, loginId])
+  const items = useMemo(() => datos?.items ?? [], [datos])
 
+  // Leídas: se persisten por usuario en el dispositivo (AsyncStorage) y se
+  // fusionan con las que el servidor ya tiene marcadas para este loginId. Así el
+  // estado "leído" sobrevive al refrescar o remontar el header.
+  const claveLeidas = loginId ? `bareca.notifLeidas.${loginId}` : null
+  const [leidas, setLeidas] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    if (!claveLeidas) return
+    AsyncStorage.getItem(claveLeidas).then((v) => {
+      if (!v) return
+      try {
+        const arr = JSON.parse(v) as number[]
+        setLeidas((s) => new Set([...s, ...arr.map(Number)]))
+      } catch {
+        /* noop */
+      }
+    })
+  }, [claveLeidas])
+
+  useEffect(() => {
+    const srv = datos?.readIds
+    if (!srv?.length) return
+    setLeidas((s) => new Set([...s, ...srv.map(Number)]))
+  }, [datos])
+
+  const esLeida = (n: Notificacion) => n.leida || leidas.has(Number(n.id))
+  const noLeidas = items.filter((n) => !esLeida(n)).length
+
+  const persistir = (nx: Set<number>) => {
+    if (claveLeidas) AsyncStorage.setItem(claveLeidas, JSON.stringify([...nx])).catch(() => {})
+  }
   const marcarLeida = (n: Notificacion) => {
-    if (esLeida(n) || !user?.loginId) return
-    setLeidas((s) => new Set(s).add(Number(n.id)))
-    notifApi.markRead(user.loginId, Number(n.id)).catch(() => {})
+    if (esLeida(n) || !loginId) return
+    setLeidas((s) => {
+      const nx = new Set(s).add(Number(n.id))
+      persistir(nx)
+      return nx
+    })
+    notifApi.markRead(loginId, Number(n.id)).catch(() => {})
   }
   const marcarTodas = () => {
-    if (!user?.loginId || !datos) return
-    const pend = datos.filter((n) => !esLeida(n))
+    if (!loginId || !items.length) return
+    const pend = items.filter((n) => !esLeida(n))
     if (!pend.length) return
     setLeidas((s) => {
       const nx = new Set(s)
       pend.forEach((n) => nx.add(Number(n.id)))
+      persistir(nx)
       return nx
     })
-    pend.forEach((n) => notifApi.markRead(user.loginId, Number(n.id)).catch(() => {}))
+    pend.forEach((n) => notifApi.markRead(loginId, Number(n.id)).catch(() => {}))
   }
 
   return (
@@ -96,10 +136,10 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
           <ScrollView style={{ maxHeight: 380 }}>
             {datos === null ? (
               <CargandoBloque texto="Cargando…" />
-            ) : datos.length === 0 ? (
+            ) : items.length === 0 ? (
               <EstadoVacio titulo="Sin notificaciones" detalle="No tienes avisos por ahora." />
             ) : (
-              datos.map((n) => {
+              items.map((n) => {
                 const leida = esLeida(n)
                 return (
                   <Pressable

@@ -509,7 +509,7 @@ function CampoFecha({
 
 /** Logo de la aseguradora emisora (mismo criterio que el resto del app). */
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
-  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
+  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
 ]
