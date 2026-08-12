@@ -29,6 +29,15 @@ import { color } from '@/lib/tema'
 const LOGO_BARECA_BLANCO = require('../../assets/logo-bareca-blanco.png')
 const CARA_TRISTE = require('../../assets/racha-triste.png')
 const CARA_FELIZ = require('../../assets/racha-feliz.png')
+
+/** ¿La fecha (ISO/date) cae hoy, en hora local del dispositivo? */
+function esHoy(fecha?: string | null): boolean {
+  if (!fecha) return false
+  const d = new Date(fecha)
+  if (isNaN(d.getTime())) return false
+  const h = new Date()
+  return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate()
+}
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
   { re: /caron/i, src: require('../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
@@ -101,8 +110,10 @@ export default function Home() {
   const pagada = tot?.totalPagada ?? tot?.pagado ?? 0
   const historico = tot?.totalHistorico ?? tot?.total ?? 0
   const res = datos?.res
-  const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true : null
   const polizas: DisplayPolicy[] = datos?.pol ?? []
+  // La app detecta una venta de HOY (aunque el backend aún no la cuente) -> Beca feliz.
+  const vendioHoy = polizas.some((p) => esHoy(p.saleDate))
+  const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true || vendioHoy : null
   const foto = datos?.foto ?? null
   const nombre = datos?.nombreEnt || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
 

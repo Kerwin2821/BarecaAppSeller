@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, findNodeHandle, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
@@ -105,6 +105,16 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const insets = useSafeAreaInsets()
   const [paso, setPaso] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
+  const refCotizar = useRef<View>(null)
+  const refPlanes = useRef<View>(null)
+  const desplazarA = useCallback((ref: { current: View | null }) => {
+    const sv = scrollRef.current
+    const node = ref.current
+    if (!sv || !node) return
+    const handle = findNodeHandle(sv)
+    if (handle == null) return
+    node.measureLayout(handle as number, (_x, y) => sv.scrollTo({ y: Math.max(0, y - 16), animated: true }), () => {})
+  }, [])
   // Al cambiar de paso, sube al inicio (p.ej. al pasar a Datos del Cliente → OCR).
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true })
@@ -431,6 +441,20 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   }, [grupoId, producto, proveedores])
 
   const puedeCotizar = !!productoId && !!claseId && !!grupoId
+  // Al elegir el grupo, sube para mostrar "Cotizar Planes"; al cargar los planes,
+  // sube para mostrar los planes + adicionales (APOV/grúa).
+  useEffect(() => {
+    if (grupoId && planes.length === 0) {
+      const t = setTimeout(() => desplazarA(refCotizar), 320)
+      return () => clearTimeout(t)
+    }
+  }, [grupoId, planes.length, desplazarA])
+  useEffect(() => {
+    if (planes.length > 0) {
+      const t = setTimeout(() => desplazarA(refPlanes), 320)
+      return () => clearTimeout(t)
+    }
+  }, [planes.length, desplazarA])
 
   // El flujo funerario no tiene paso "Conductor": mostramos 3 pasos y mapeamos
   // el índice visible (paso 3 = Pago → posición 2 en el stepper funerario).
@@ -612,6 +636,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       </View>
                     ) : null}
 
+                    <View ref={refCotizar} collapsable={false} />
                     <Boton
                       texto={cargando.planes ? 'Cotizando…' : 'Cotizar Planes'}
                       onPress={cotizar}
@@ -623,6 +648,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     {/* 4. Planes */}
                     {planes.length > 0 ? (
                       <>
+                        <View ref={refPlanes} collapsable={false} />
                         <Text style={est.seccion}>4. Selecciona el plan ideal para tu cliente</Text>
                         <View style={est.grid2}>
                           {planes.map((pl, i) => (
