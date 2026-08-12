@@ -63,7 +63,8 @@
         {
           "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": false
