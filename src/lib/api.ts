@@ -72,6 +72,11 @@ export function limpiarCookieSesion(): void {
   void SecureStore.deleteItemAsync(K_COOKIE)
 }
 
+/** Cookie de sesión actual (para reusarla en el socket.io del pago móvil). */
+export function cookieSesionActual(): string | null {
+  return cookieSesion
+}
+
 /** Extrae `auth_token_v...=valor` de la cabecera Set-Cookie y la guarda. */
 function capturarCookie(res: Response): void {
   const sc = res.headers.get('set-cookie')

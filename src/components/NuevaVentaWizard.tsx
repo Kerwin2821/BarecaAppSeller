@@ -333,14 +333,31 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   }, [paso])
 
   const detallesBanco = useCallback(
-    (): DetallesBanco => ({
-      banco: bancoPago,
-      telefonoAsociado: telefonoPago,
-      // Cédula del titular SIN guion (igual que la web: tipoDocumento + numeroDocumento).
-      cedulaTitular: `${tipoDocTitular}${cedulaTitular}`,
-      telefonoPago,
-    }),
-    [bancoPago, telefonoPago, tipoDocTitular, cedulaTitular],
+    (): DetallesBanco => {
+      // Pago Móvil: EXACTAMENTE como la web (payment-step.onSubmit). El banco emisor
+      // es fijo '0169' (Mi Banco/R4, la plataforma de cobro del pago móvil); el
+      // teléfono asociado y la cédula del titular salen del CLIENTE, y el teléfono de
+      // pago es el que se escribe en el formulario. Enviar `banco` vacío hace que el
+      // core falle al generar el OTP ("No enum constant with value").
+      if (metodoPago === 'PAGO_MOVIL') {
+        const c = cliente as DatosCliente
+        const docCliente = `${(c.tipoDoc || 'V').toUpperCase()}${(c.cedula || '').replace(/[^0-9]/g, '')}`
+        return {
+          banco: '0169',
+          telefonoAsociado: c.telefono || '',
+          cedulaTitular: docCliente,
+          telefonoPago,
+        }
+      }
+      return {
+        banco: bancoPago,
+        telefonoAsociado: telefonoPago,
+        // Cédula del titular SIN guion (igual que la web: tipoDocumento + numeroDocumento).
+        cedulaTitular: `${tipoDocTitular}${cedulaTitular}`,
+        telefonoPago,
+      }
+    },
+    [metodoPago, cliente, bancoPago, telefonoPago, tipoDocTitular, cedulaTitular],
   )
 
   /** Envía la orden (paso "Ingresa Datos"). */

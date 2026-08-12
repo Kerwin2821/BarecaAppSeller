@@ -10,8 +10,10 @@
  *   5. polling: /policies/orden-seguros/consultar-operacion (20×6s)
  *   6. finalizar: /payments/finalize-policy → { numeroPoliza, urlPoliza, urlCarnetPoliza }
  *
- * Flujo Pago Móvil: crea la orden (-pagoMovil) y sondea /webhook/status/{orden}
- * (60×10s) hasta detectar el pago; luego finaliza igual.
+ * Flujo Pago Móvil: crea la orden (-pagoMovil) y espera el pago por DOS canales, como
+ * la web — socket.io en tiempo real (`payment-status-update`) + polling de respaldo a
+ * /webhook/status/{numeroOrden} (60×10s). Al detectar el pago, finaliza igual. El
+ * banco emisor de la orden PM va fijo '0169' (Mi Banco/R4), como en el portal.
  *
  * Regla QA: en QA `montoReal=false` → todo cobro real es de 1 Bs (repetible).
  */
@@ -25,6 +27,7 @@ import {
   type GatewayPago,
 } from './endpoints'
 import { mensajeDeError } from './api'
+import { escucharPagoMovil } from './socketPago'
 import { actorUuid } from './roles'
 import type { DatosCliente } from '../components/PasoCliente'
 
@@ -296,6 +299,18 @@ export function useEmisionPago() {
   const metodoRef = useRef<MetodoPago>('DEBITO')
   const cancelar = useRef(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Pago móvil: limpieza del socket en vivo + guardia de resolución única (que no
+  // finalicen a la vez el socket y el polling de respaldo).
+  const pmCleanup = useRef<(() => void) | null>(null)
+  const pmResuelto = useRef(false)
+
+  /** Corta el canal en vivo del pago móvil (si está abierto). */
+  const detenerSocketPM = useCallback(() => {
+    if (pmCleanup.current) {
+      pmCleanup.current()
+      pmCleanup.current = null
+    }
+  }, [])
 
   // Cuenta regresiva según el estado (verifying=150s, awaitingPayment=300s).
   useEffect(() => {
@@ -312,13 +327,15 @@ export function useEmisionPago() {
     }
   }, [otpState])
 
-  useEffect(() => () => { cancelar.current = true }, [])
+  useEffect(() => () => { cancelar.current = true; detenerSocketPM() }, [detenerSocketPM])
 
   const resetToIdle = useCallback(() => {
     cancelar.current = true
+    pmResuelto.current = true
+    detenerSocketPM()
     setOtpState('idle')
     setOtpError(null)
-  }, [])
+  }, [detenerSocketPM])
 
   /** Carga tasas, bancos, config de pasarela y el total con comisión. */
   const cargarInicial = useCallback(async (sd: SaleDataVenta) => {
@@ -637,12 +654,51 @@ export function useEmisionPago() {
     throw e
   }, [finalizar])
 
-  /** Sondea el webhook del pago móvil hasta detectar el pago. */
+  /**
+   * Espera la confirmación del pago móvil como la web: canal en TIEMPO REAL por
+   * socket.io (`payment-status-update`) + polling HTTP de respaldo a
+   * `/webhook/status/:numeroOrden`. Gana el primero que llegue; al detectar el pago
+   * finaliza la póliza y la pantalla pasa a "procesado" (otpState = 'verified').
+   */
   const pollPagoMovil = useCallback(async (sd: SaleDataVenta, bank: DetallesBanco, gateway: string) => {
-    const orderId = orden.current.orderUuid || orden.current.numeroOrden || ''
+    // Llave del webhook/sala = numeroOrden (así lo cachea/emite el BFF y lo referencia
+    // el banco). En la orden PM el uuid coincide con el numeroOrden.
+    const orderId = orden.current.numeroOrden || orden.current.orderUuid || ''
+    pmResuelto.current = false
+
+    // Resolución ÚNICA: socket o polling, lo que caiga primero (con guardia).
+    const resolverExito = async (ref: string) => {
+      if (pmResuelto.current || cancelar.current) return
+      pmResuelto.current = true
+      detenerSocketPM()
+      try {
+        await finalizar(sd, bank, gateway, ref)
+      } catch (e) {
+        setOtpState('error')
+        setOtpError(mensajeDeError(e))
+      }
+    }
+    const resolverFallo = () => {
+      if (pmResuelto.current || cancelar.current) return
+      pmResuelto.current = true
+      detenerSocketPM()
+      setOtpState('idle')
+      setOtpError('El pago móvil fue rechazado.')
+    }
+
+    // 1) Canal en vivo (socket.io) — igual que la web: se une a la sala del numeroOrden.
+    detenerSocketPM()
+    pmCleanup.current = escucharPagoMovil(orderId, (data) => {
+      const status = data?.status
+      if (status === 'SUCCESS') void resolverExito(data?.policyNumber || `PM-${orderId.slice(0, 8)}`)
+      else if (status === 'FAILURE') resolverFallo()
+    })
+
+    // 2) Respaldo por HTTP-polling (por si el socket no logra conectar / upgrade WS).
     for (let intento = 0; intento < POLL_PM_MAX; intento++) {
-      if (cancelar.current) return
+      if (cancelar.current || pmResuelto.current) return
       await sleep(POLL_PM_MS)
+      if (cancelar.current || pmResuelto.current) return
       let d: any = { status: 'PENDING' }
       try {
         d = (await paymentApi.webhookStatus(orderId)) ?? d
@@ -651,18 +707,20 @@ export function useEmisionPago() {
       }
       const status = d?.status ?? d?.data?.status
       if (status === 'SUCCESS') {
-        const ref = d?.policyNumber ?? d?.data?.policyNumber ?? `PM-${orderId.slice(0, 8)}`
-        await finalizar(sd, bank, gateway, ref)
+        await resolverExito(d?.policyNumber ?? d?.data?.policyNumber ?? `PM-${orderId.slice(0, 8)}`)
         return
       }
       if (status === 'FAILURE') {
-        setOtpState('idle')
-        setOtpError('El pago móvil fue rechazado.')
+        resolverFallo()
         return
       }
     }
-    setOtpState('pollingFailed')
-  }, [finalizar])
+    // Ni socket ni polling confirmaron en el tiempo máximo → "verificar de nuevo".
+    if (!pmResuelto.current) {
+      detenerSocketPM()
+      setOtpState('pollingFailed')
+    }
+  }, [finalizar, detenerSocketPM])
 
   /** Paso 1: prepara, stagea y crea la orden. Débito → 'sent'; PM → 'awaitingPayment'. */
   const crearOrden = useCallback(
