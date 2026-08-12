@@ -408,7 +408,7 @@ const est = StyleSheet.create({
   // Tarjeta de comisión (fondo degradado navy → naranja de marca)
   // Capa de sombra aparte (la tarjeta tiene overflow:hidden y en iOS eso recorta la sombra).
   cardShadow: {
-    marginTop: -2,
+    marginTop: 8,
     borderRadius: 20,
     backgroundColor: color.primary,
     shadowColor: color.primaryDark,

@@ -3,7 +3,6 @@ import type { UserRole } from '../lib/tipos'
 import {
   puedeGestionarEquipo,
   puedeVender,
-  puedeVerMapa,
   puedeVerPolizas,
   puedeVerReportes,
   puedeVerRetos,
@@ -13,7 +12,6 @@ import {
   IcoComisiones,
   IcoEquipo,
   IcoHome,
-  IcoMapa,
   IcoPerfil,
   IcoPolizas,
   IcoReporte,
@@ -71,14 +69,6 @@ export const MENU: ItemMenu[] = [
     subtitulo: 'KPIs y descargas',
     Icono: IcoReporte,
     visible: puedeVerReportes,
-    grupo: 'Gestión',
-  },
-  {
-    ruta: '/mapa-conexiones',
-    titulo: 'Mapa de Conexiones',
-    subtitulo: 'Red comercial',
-    Icono: IcoMapa,
-    visible: puedeVerMapa,
     grupo: 'Gestión',
   },
   {
