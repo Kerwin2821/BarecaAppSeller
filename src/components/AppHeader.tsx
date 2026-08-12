@@ -10,6 +10,7 @@ import { desenvolver } from '../lib/api'
 import { useApi } from '../hooks/useApi'
 import type { Notificacion } from '../lib/tipos'
 import { useDrawer } from './Drawer'
+import { useObjetivoTour } from '../lib/tour'
 import { IcoAtras, IcoCampana, IcoMenu } from './Iconos'
 import { CargandoBloque, EstadoVacio } from './Estados'
 import { color } from '../lib/tema'
@@ -19,6 +20,8 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
   const { abrir } = useDrawer()
   const { user } = useAuth()
   const [panelAbierto, setPanelAbierto] = useState(false)
+  const refMenu = useObjetivoTour('menu')
+  const refCampana = useObjetivoTour('campana')
 
   const perfil = user?.role ?? ''
   const destinoId =
@@ -107,13 +110,13 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
           <IcoAtras color={color.text} size={22} />
         </Pressable>
       ) : null}
-      <Pressable onPress={abrir} hitSlop={10} style={est.iconBtn}>
+      <Pressable ref={refMenu} collapsable={false} onPress={abrir} hitSlop={10} style={est.iconBtn}>
         <IcoMenu color={color.text} />
       </Pressable>
       <Text style={est.titulo} numberOfLines={1}>
         {titulo}
       </Text>
-      <Pressable onPress={() => setPanelAbierto(true)} hitSlop={10} style={est.iconBtn}>
+      <Pressable ref={refCampana} collapsable={false} onPress={() => setPanelAbierto(true)} hitSlop={10} style={est.iconBtn}>
         <IcoCampana color={color.text} />
         {noLeidas > 0 && (
           <View style={est.badge}>

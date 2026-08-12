@@ -19,9 +19,9 @@ import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
 import { BannerAseguradoras } from '@/components/BannerAseguradoras'
 import { IcoEquipo, IcoRachas, IcoReporte, IcoSoporte } from '@/components/Iconos'
 import { useToast } from '@/components/Toast'
-import { VisitaGuiada } from '@/components/VisitaGuiada'
+import { ObjetivoTour, useObjetivoTour, useTour } from '@/lib/tour'
 import { registrarPush } from '@/lib/push'
-import { marcarTourVisto, tourVisto } from '@/lib/onboarding'
+import { tourVisto } from '@/lib/onboarding'
 import { color } from '@/lib/tema'
 
 // Marca + mascota + logos de aseguradora — empaquetados en el app.
@@ -72,12 +72,13 @@ export default function Home() {
     if (user) void registrarPush(user)
   }, [user?.loginId])
 
-  // Visita guiada la primera vez que se entra al app.
-  const [tour, setTour] = useState(false)
+  // Visita guiada (spotlight) la primera vez que se entra al app. El objetivo de la
+  // tarjeta de comisión se registra aquí; el tour arranca cuando el home ya cargó.
+  const { iniciar: iniciarTour } = useTour()
+  const refComision = useObjetivoTour('comision')
+  const [primeraVezTour, setPrimeraVezTour] = useState(false)
   useEffect(() => {
-    tourVisto().then((v) => {
-      if (!v) setTour(true)
-    })
+    tourVisto().then((v) => setPrimeraVezTour(!v))
   }, [])
 
   const cargar = useCallback(async () => {
@@ -116,6 +117,15 @@ export default function Home() {
   const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true || vendioHoy : null
   const foto = datos?.foto ?? null
   const nombre = datos?.nombreEnt || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
+
+  // Arranca la visita guiada una sola vez, cuando el home ya no está cargando (así los
+  // objetivos —tarjeta, accesos— están montados y se pueden medir).
+  useEffect(() => {
+    if (!primeraVezTour || cargando) return
+    setPrimeraVezTour(false)
+    const t = setTimeout(() => iniciarTour(), 350)
+    return () => clearTimeout(t)
+  }, [primeraVezTour, cargando, iniciarTour])
 
   return (
     <Pantalla onRefresh={recargar}>
@@ -180,7 +190,7 @@ export default function Home() {
             </>
           ) : (
             <>
-              <Pressable style={est.cardShadow} onPress={() => router.navigate('/comisiones' as never)}>
+              <Pressable ref={refComision} collapsable={false} style={est.cardShadow} onPress={() => router.navigate('/comisiones' as never)}>
                 <View style={est.card}>
                   <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
                     <Defs>
@@ -217,7 +227,9 @@ export default function Home() {
                   </View>
                 </View>
               </Pressable>
-              <Boton texto="Retirar comisión" variante="accent" onPress={() => setRetiro(true)} style={{ marginTop: 16 }} />
+              <ObjetivoTour id="retirar" style={{ marginTop: 16 }}>
+                <Boton texto="Retirar comisión" variante="accent" onPress={() => setRetiro(true)} />
+              </ObjetivoTour>
             </>
           )}
 
@@ -226,10 +238,10 @@ export default function Home() {
 
           {/* Accesos rápidos */}
           <View style={est.accesos}>
-            <Acceso Icono={IcoReporte} texto="Reporte" onPress={() => router.navigate('/reporte' as never)} />
-            <Acceso Icono={IcoRachas} texto="Rachas" onPress={() => router.navigate('/rachas' as never)} />
-            <Acceso Icono={IcoEquipo} texto="Equipo" onPress={() => router.navigate('/equipo' as never)} />
-            <Acceso Icono={IcoSoporte} texto="Soporte" onPress={() => router.navigate('/soporte' as never)} />
+            <Acceso idTour="acc-reporte" Icono={IcoReporte} texto="Reporte" onPress={() => router.navigate('/reporte' as never)} />
+            <Acceso idTour="acc-rachas" Icono={IcoRachas} texto="Rachas" onPress={() => router.navigate('/rachas' as never)} />
+            <Acceso idTour="acc-equipo" Icono={IcoEquipo} texto="Equipo" onPress={() => router.navigate('/equipo' as never)} />
+            <Acceso idTour="acc-soporte" Icono={IcoSoporte} texto="Soporte" onPress={() => router.navigate('/soporte' as never)} />
           </View>
 
           {/* Últimas pólizas */}
@@ -287,13 +299,6 @@ export default function Home() {
         }}
       />
 
-      <VisitaGuiada
-        visible={tour}
-        onFinalizar={() => {
-          setTour(false)
-          void marcarTourVisto()
-        }}
-      />
     </Pantalla>
   )
 }
@@ -302,13 +307,16 @@ function Acceso({
   Icono,
   texto,
   onPress,
+  idTour,
 }: {
   Icono: ComponentType<{ color: string; size?: number }>
   texto: string
   onPress: () => void
+  idTour: string
 }) {
+  const ref = useObjetivoTour(idTour)
   return (
-    <Pressable style={est.acceso} onPress={onPress}>
+    <Pressable ref={ref} collapsable={false} style={est.acceso} onPress={onPress}>
       <View style={est.accesoIcono}>
         <Icono color={color.accent} size={20} />
       </View>

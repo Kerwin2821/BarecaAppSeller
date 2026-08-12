@@ -3,6 +3,8 @@ import { Stack } from 'expo-router'
 import { DrawerProvider } from '@/components/Drawer'
 import { AppHeader } from '@/components/AppHeader'
 import { BarraInferior } from '@/components/BarraInferior'
+import { TourOverlay } from '@/components/TourOverlay'
+import { TourProvider } from '@/lib/tour'
 import { color } from '@/lib/tema'
 
 /**
@@ -12,35 +14,38 @@ import { color } from '@/lib/tema'
  */
 export default function AppLayout() {
   return (
-    <DrawerProvider>
-      <View style={{ flex: 1, backgroundColor: color.bgApp }}>
-        <Stack
-          screenOptions={{
-            header: ({ options, navigation, back, route }) => (
-              <AppHeader
-                titulo={options.title ?? 'Bareca'}
-                onVolver={back && route.name !== 'index' ? () => navigation.goBack() : undefined}
-              />
-            ),
-            contentStyle: { backgroundColor: color.bgApp },
-          }}
-        >
-          <Stack.Screen name="index" options={{ title: 'Inicio' }} />
-          <Stack.Screen name="polizas/index" options={{ title: 'Mis Ventas' }} />
-          <Stack.Screen name="polizas/[id]" options={{ title: 'Detalle de Póliza' }} />
-          <Stack.Screen name="comisiones" options={{ title: 'Mis Comisiones' }} />
-          <Stack.Screen name="reporte" options={{ title: 'Reporte de Pólizas' }} />
-          <Stack.Screen name="rachas" options={{ title: 'Mis Rachas' }} />
-          <Stack.Screen name="equipo" options={{ title: 'Gestión de Equipo' }} />
-          <Stack.Screen name="perfil" options={{ title: 'Mi Perfil' }} />
-          <Stack.Screen name="nueva-venta" options={{ title: 'Nueva Venta' }} />
-          <Stack.Screen name="mapa-conexiones" options={{ title: 'Mapa de Conexiones' }} />
-          <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
-          <Stack.Screen name="chat/index" options={{ title: 'Chat' }} />
-          <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
-        </Stack>
-        <BarraInferior />
-      </View>
-    </DrawerProvider>
+    <TourProvider>
+      <DrawerProvider>
+        <View style={{ flex: 1, backgroundColor: color.bgApp }}>
+          <Stack
+            screenOptions={{
+              header: ({ options, navigation, back, route }) => (
+                <AppHeader
+                  titulo={options.title ?? 'Bareca'}
+                  onVolver={back && route.name !== 'index' ? () => navigation.goBack() : undefined}
+                />
+              ),
+              contentStyle: { backgroundColor: color.bgApp },
+            }}
+          >
+            <Stack.Screen name="index" options={{ title: 'Inicio' }} />
+            <Stack.Screen name="polizas/index" options={{ title: 'Mis Ventas' }} />
+            <Stack.Screen name="polizas/[id]" options={{ title: 'Detalle de Póliza' }} />
+            <Stack.Screen name="comisiones" options={{ title: 'Mis Comisiones' }} />
+            <Stack.Screen name="reporte" options={{ title: 'Reporte de Pólizas' }} />
+            <Stack.Screen name="rachas" options={{ title: 'Mis Rachas' }} />
+            <Stack.Screen name="equipo" options={{ title: 'Gestión de Equipo' }} />
+            <Stack.Screen name="perfil" options={{ title: 'Mi Perfil' }} />
+            <Stack.Screen name="nueva-venta" options={{ title: 'Nueva Venta' }} />
+            <Stack.Screen name="mapa-conexiones" options={{ title: 'Mapa de Conexiones' }} />
+            <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
+            <Stack.Screen name="chat/index" options={{ title: 'Chat' }} />
+            <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
+          </Stack>
+          <BarraInferior />
+        </View>
+        <TourOverlay />
+      </DrawerProvider>
+    </TourProvider>
   )
 }

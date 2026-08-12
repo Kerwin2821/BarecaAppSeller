@@ -3,6 +3,7 @@ import { usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../lib/auth'
 import { puedeVender } from '../lib/roles'
+import { useObjetivoTour } from '../lib/tour'
 import { IcoComisiones, IcoHome, IcoPerfil, IcoPolizas, IcoVenta } from './Iconos'
 import { color } from '../lib/tema'
 
@@ -18,6 +19,15 @@ export function BarraInferior() {
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
   const { user } = useAuth()
+
+  // Objetivos de la visita guiada (una ref por pestaña + el botón central).
+  const refInicio = useObjetivoTour('tab-inicio')
+  const refVentas = useObjetivoTour('tab-ventas')
+  const refComisiones = useObjetivoTour('tab-comisiones')
+  const refPerfil = useObjetivoTour('tab-perfil')
+  const refVender = useObjetivoTour('tab-vender')
+  const refTab = (ruta: string) =>
+    ruta === '/' ? refInicio : ruta === '/polizas' ? refVentas : ruta === '/comisiones' ? refComisiones : ruta === '/perfil' ? refPerfil : undefined
 
   const oculta = OCULTAR.some((h) => pathname.startsWith(h)) || /^\/polizas\/[^/]+$/.test(pathname)
   if (oculta) return null
@@ -41,7 +51,7 @@ export function BarraInferior() {
       <View style={est.barra}>
         {lados.map((it, i) =>
           it ? (
-            <Pressable key={it.ruta} style={est.item} onPress={() => ir(it.ruta)} hitSlop={6}>
+            <Pressable key={it.ruta} ref={refTab(it.ruta)} collapsable={false} style={est.item} onPress={() => ir(it.ruta)} hitSlop={6}>
               <it.Ico color={activo(it.ruta) ? color.primary : color.text3} size={22} />
               <Text style={[est.label, activo(it.ruta) && { color: color.primary, fontWeight: '800' }]} numberOfLines={1}>
                 {it.label}
@@ -53,7 +63,7 @@ export function BarraInferior() {
         )}
       </View>
 
-      <Pressable style={est.fab} onPress={() => ir(centro.ruta)}>
+      <Pressable ref={refVender} collapsable={false} style={est.fab} onPress={() => ir(centro.ruta)}>
         <View style={est.fabCirc}>
           <IcoVenta color="#fff" size={25} />
         </View>

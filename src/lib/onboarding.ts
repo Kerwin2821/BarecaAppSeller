@@ -20,7 +20,8 @@ export async function marcarOnboardingVisto(): Promise<void> {
   }
 }
 
-const K_TOUR = 'bareca.tourVisto'
+// v2: cambió a visita guiada tipo spotlight → se muestra una vez a quien vio la anterior.
+const K_TOUR = 'bareca.tourVisto.v2'
 
 /** ¿El usuario ya hizo la visita guiada dentro del app (home)? */
 export async function tourVisto(): Promise<boolean> {
