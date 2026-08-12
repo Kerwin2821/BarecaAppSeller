@@ -46,10 +46,10 @@ type TipoSeguro = 'rcv' | 'funerario'
 
 const PASOS = ['Cotización', 'Datos del Cliente', 'Conductor', 'Registro de Pago']
 
-/** Tarjetas de tipo de seguro (como la web: RCV y Funerario activos; el resto "Próximamente"). */
+/** Tarjetas de tipo de seguro (solo RCV activo; el resto "Próximamente"). */
 const TIPOS: { valor: TipoSeguro | null; emoji: string; texto: string; activo: boolean }[] = [
   { valor: 'rcv', emoji: '🚗', texto: 'Vehículos (RCV)', activo: true },
-  { valor: 'funerario', emoji: '🕊️', texto: 'Servicio Funerario', activo: true },
+  { valor: 'funerario', emoji: '🕊️', texto: 'Servicio Funerario', activo: false },
   { valor: null, emoji: '🚙', texto: 'Auto (Casco)', activo: false },
   { valor: null, emoji: '❤️', texto: 'Salud y Vida', activo: false },
   { valor: null, emoji: '🏠', texto: 'Hogar y Comercio', activo: false },
