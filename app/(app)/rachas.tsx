@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { rachasApi } from '@/lib/endpoints'
+import { fetchPolizas } from '@/lib/polizas'
+import type { DisplayPolicy } from '@/lib/tipos'
 import { actorUuid, puedeVender } from '@/lib/roles'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, Skeleton } from '@/components/Estados'
@@ -23,6 +25,16 @@ const NARANJA_OSC = '#EA580C'
 interface DatosRachas {
   resumen: any
   retos: any
+  vendioHoy: boolean
+}
+
+/** ¿La fecha (ISO/date) cae hoy, en hora local del dispositivo? */
+function esHoy(fecha?: string | null): boolean {
+  if (!fecha) return false
+  const d = new Date(fecha)
+  if (isNaN(d.getTime())) return false
+  const h = new Date()
+  return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate()
 }
 
 export default function Rachas() {
@@ -32,11 +44,14 @@ export default function Rachas() {
     if (!user) return null
     const id = actorUuid(user) ?? undefined
     if (id === undefined) return null
-    const [resResumen, resRetos] = await Promise.all([
+    const [resResumen, resRetos, pols] = await Promise.all([
       rachasApi.resumen(user.role, id),
       rachasApi.retos(user.role, id),
+      fetchPolizas(user, 'vehicle', 0, 5).then((x) => x.items).catch(() => [] as DisplayPolicy[]),
     ])
-    return { resumen: (resResumen as any)?.data ?? null, retos: (resRetos as any)?.data ?? null }
+    // La app detecta una venta de HOY aunque el backend aún no la cuente en la racha.
+    const vendioHoy = pols.some((p) => esHoy(p.saleDate))
+    return { resumen: (resResumen as any)?.data ?? null, retos: (resRetos as any)?.data ?? null, vendioHoy }
   }, [user])
 
   const { datos, cargando, error, recargar } = useApi<DatosRachas | null>(cargar, [user?.loginId])
@@ -55,8 +70,8 @@ export default function Rachas() {
         <SkeletonRachas />
       ) : (
         <View style={{ gap: 14 }}>
-          {resumen ? <Hero r={resumen} /> : null}
-          {resumen ? <GuiaRacha r={resumen} /> : null}
+          {resumen ? <Hero r={resumen} vendioHoy={!!datos?.vendioHoy} /> : null}
+          {resumen ? <GuiaRacha r={resumen} vendioHoy={!!datos?.vendioHoy} /> : null}
 
           {completados > 0 ? (
             <View style={est.banner}>
@@ -84,8 +99,8 @@ export default function Rachas() {
   )
 }
 
-function Hero({ r }: { r: any }) {
-  const peligro = r?.estado === 'peligro' || r?.enPeligro === true
+function Hero({ r, vendioHoy }: { r: any; vendioHoy?: boolean }) {
+  const peligro = (r?.estado === 'peligro' || r?.enPeligro === true) && !vendioHoy
   const racha = typeof r?.racha === 'number' ? r.racha : 0
   const semana: any[] = Array.isArray(r?.semana) ? r.semana : []
 
@@ -100,39 +115,37 @@ function Hero({ r }: { r: any }) {
           </Text>
           {semana.length > 0 ? (
             <View style={est.semana}>
-              {semana.map((d, i) => (
-                <View key={i} style={est.dia}>
-                  <Text style={est.diaLbl}>{d?.dia ?? ''}</Text>
-                  <View
-                    style={[
-                      est.diaDot,
-                      d?.activo
-                        ? est.diaDotActivo
-                        : d?.esHoy
-                          ? est.diaDotHoy
-                          : est.diaDotFuturo,
-                    ]}
-                  >
-                    <Text style={[est.diaDotTxt, d?.activo ? { color: NARANJA_OSC } : { color: '#fff' }]}>
-                      {d?.activo ? '✓' : d?.esHoy ? '•' : ''}
-                    </Text>
+              {semana.map((d, i) => {
+                const act = d?.activo || (vendioHoy && d?.esHoy)
+                return (
+                  <View key={i} style={est.dia}>
+                    <Text style={est.diaLbl}>{d?.dia ?? ''}</Text>
+                    <View style={[est.diaDot, act ? est.diaDotActivo : d?.esHoy ? est.diaDotHoy : est.diaDotFuturo]}>
+                      <Text style={[est.diaDotTxt, act ? { color: NARANJA_OSC } : { color: '#fff' }]}>
+                        {act ? '✓' : d?.esHoy ? '•' : ''}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              ))}
+                )
+              })}
             </View>
           ) : null}
         </View>
       </View>
-      {r?.mensaje ? <Text style={[est.mensaje, peligro && { color: color.danger }]}>{String(r.mensaje)}</Text> : null}
+      {vendioHoy ? (
+        <Text style={[est.mensaje, { color: color.success }]}>¡Vas al día! Ya registraste una venta hoy. 🔥</Text>
+      ) : r?.mensaje ? (
+        <Text style={[est.mensaje, peligro && { color: color.danger }]}>{String(r.mensaje)}</Text>
+      ) : null}
     </View>
   )
 }
 
 /** Guía accionable de cómo cumplir la racha (más marcada cuando está en peligro). */
-function GuiaRacha({ r }: { r: any }) {
+function GuiaRacha({ r, vendioHoy }: { r: any; vendioHoy?: boolean }) {
   const router = useRouter()
   const { user } = useAuth()
-  const peligro = r?.estado === 'peligro' || r?.enPeligro === true
+  const peligro = (r?.estado === 'peligro' || r?.enPeligro === true) && !vendioHoy
   const racha = typeof r?.racha === 'number' ? r.racha : 0
   const puedeV = puedeVender(user?.role)
   const PASOS = [

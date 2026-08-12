@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { funerarioApi, paymentApi, rcvApi, type ClaseVehiculo, type GrupoVehiculo, type PlanFunerario, type ProductoAseguradora, type Proveedor } from '../lib/endpoints'
@@ -66,7 +66,7 @@ const aOpc = <T,>(xs: T[], id: (x: T) => string, txt: (x: T) => string): OpcionD
 
 /** Logo de la aseguradora por nombre (igual que el quote-step del portal). */
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
-  { re: /caroni/i, src: require('../../assets/logos/logo-caroni-color.png') },
+  { re: /caron/i, src: require('../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../assets/logos/logo-laoccidental.png') },
 ]
@@ -914,7 +914,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           </Tarjeta>
         ) : pago.otpState === 'verified' ? (
           // ── Pago · Éxito (ID de transacción + descargas) ───────
-          <PagoExito emision={pago.emision} onNuevo={reiniciar} />
+          <PagoExito emision={pago.emision} cliente={cliente} onNuevo={reiniciar} />
         ) : (
           // ── Paso 4 · Registro del Pago (dirigido por otpState, réplica de payment-step) ──
           <View style={{ gap: 12 }}>
@@ -1052,7 +1052,10 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     </>
                   ) : (
                     <>
-                      <Text style={est.metodoTitulo}>Datos del Titular de la Cuenta</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <Text style={est.metodoTitulo}>Datos del Titular de la Cuenta</Text>
+                        {bancoPago ? <LogoBanco codigo={bancoPago} size={40} /> : null}
+                      </View>
                       {pago.gateways.length > 1 ? (
                         <View style={{ gap: 8 }}>
                           <Text style={est.label}>Plataforma de cobro</Text>
@@ -1121,8 +1124,13 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
             ) : pago.otpState === 'sent' || pago.otpState === 'error' ? (
               // ── Recibe SMS · Verifica tu Identidad (Débito) ────
               <Tarjeta style={{ padding: 20, gap: 14 }}>
-                <Text style={est.pasoTitulo}>Verifica tu Identidad</Text>
-                <Text style={est.hint}>
+                <Text style={[est.pasoTitulo, { textAlign: 'center' }]}>Verifica tu Identidad</Text>
+                {bancoPago ? (
+                  <View style={{ alignItems: 'center' }}>
+                    <LogoBanco codigo={bancoPago} size={58} />
+                  </View>
+                ) : null}
+                <Text style={[est.hint, { textAlign: 'center' }]}>
                   Hemos enviado un código de verificación a tu teléfono asociado al banco. Ingrésalo a continuación:
                 </Text>
                 <Campo
@@ -1235,11 +1243,40 @@ function FilaResumen({ k, v }: { k: string; v: string }) {
 /** Pantalla de éxito: ID de transacción + descarga de documentos (como la web). */
 function PagoExito({
   emision,
+  cliente,
   onNuevo,
 }: {
   emision: Emision | null
+  cliente: DatosCliente | null
   onNuevo: () => void
 }) {
+  // Animación "pop" del check al emitir (transacción exitosa).
+  const escala = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    Animated.spring(escala, { toValue: 1, friction: 4, tension: 90, useNativeDriver: true }).start()
+  }, [escala])
+
+  const compartirCliente = async () => {
+    const c = cliente
+    const nombre = [c?.nombres, c?.apellidos].filter(Boolean).join(' ')
+    const lineas = [
+      '🧾 BARECA — Datos del cliente',
+      nombre ? `Nombre: ${nombre}` : '',
+      c?.cedula ? `Documento: ${c?.tipoDoc ?? 'V'}-${c.cedula}` : '',
+      c?.genero ? `Género: ${c.genero === 'F' ? 'Femenino' : 'Masculino'}` : '',
+      c?.correo ? `Correo: ${c.correo}` : '',
+      c?.telefono ? `Teléfono: ${c.telefono}` : '',
+      c?.placa ? `Placa: ${c.placa}` : '',
+      emision?.numeroPoliza ? `Póliza N°: ${emision.numeroPoliza}` : '',
+      emision?.transactionId ? `ID de transacción: ${emision.transactionId}` : '',
+    ].filter(Boolean)
+    try {
+      await Share.share({ message: lineas.join('\n') })
+    } catch {
+      /* el usuario canceló */
+    }
+  }
+
   const docs = [
     { etiqueta: 'Comprobante de Póliza', emoji: '📄', url: emision?.urlPoliza },
     { etiqueta: 'Carnet de RCV', emoji: '🪪', url: emision?.urlCarnetPoliza },
@@ -1249,9 +1286,9 @@ function PagoExito({
   return (
     <View style={{ gap: 14 }}>
       <Tarjeta style={est.exitoCard}>
-        <View style={est.exitoIcono}>
+        <Animated.View style={[est.exitoIcono, { transform: [{ scale: escala }] }]}>
           <Text style={{ fontSize: 34 }}>✅</Text>
-        </View>
+        </Animated.View>
         <Text style={est.exitoTitulo}>¡Póliza Emitida!</Text>
         <Text style={est.exitoSub}>La póliza se generó correctamente. Comparte los documentos con tu cliente.</Text>
         {emision?.numeroPoliza ? (
@@ -1284,6 +1321,7 @@ function PagoExito({
         </Alerta>
       )}
 
+      <Boton texto="📤 Compartir datos del cliente" variante="soft" onPress={compartirCliente} />
       <Boton texto="Nueva venta" onPress={onNuevo} style={{ marginTop: 4 }} />
     </View>
   )

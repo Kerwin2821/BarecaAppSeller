@@ -36,7 +36,7 @@ const ESTADOS: { valor: 'ALL' | PolicyStatus; texto: string }[] = [
 
 /** Logo de la aseguradora (mismo criterio que el wizard: chip blanco, sin tinte). */
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
-  { re: /caroni/i, src: require('../../../assets/logos/logo-caroni-color.png') },
+  { re: /caron/i, src: require('../../../assets/logos/logo-caroni-color.png') },
   { re: /estar/i, src: require('../../../assets/logos/logo-estar-seguros.png') },
   { re: /occidental/i, src: require('../../../assets/logos/logo-laoccidental.png') },
 ]
