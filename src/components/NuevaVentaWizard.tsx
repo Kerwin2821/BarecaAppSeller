@@ -73,8 +73,8 @@ const LOGOS_ASEG: { re: RegExp; src: number }[] = [
 ]
 
 /** Logo por plataforma de cobro (gateway): R4 / Banco Plaza. */
-const LOGO_GATEWAY_R4 = require('../../assets/bancos/r4-logo.png')
-const LOGO_GATEWAY_PLAZA = require('../../assets/bancos/banco-plaza-logo.png')
+const LOGO_GATEWAY_R4 = require('../../assets/logos/r4-logo.png')
+const LOGO_GATEWAY_PLAZA = require('../../assets/logos/banco-plaza-logo.png')
 function logoGateway(g: { id?: string; nombre?: string }): number | null {
   const k = `${g?.id ?? ''} ${g?.nombre ?? ''}`.toLowerCase()
   if (k.includes('plaza')) return LOGO_GATEWAY_PLAZA
