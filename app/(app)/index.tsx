@@ -152,7 +152,13 @@ export default function Home() {
         <>
           {/* Tarjeta de comisión (estilo tarjeta de crédito, con el logo Bareca) */}
           {cargando && !tot ? (
-            <Skeleton w="100%" h={196} r={20} />
+            // Skeleton del MISMO alto que tarjeta + botón, para que al cargar no salte.
+            <>
+              <Skeleton w="100%" h={196} r={20} />
+              <View style={{ marginTop: 16 }}>
+                <Skeleton w="100%" h={50} r={14} />
+              </View>
+            </>
           ) : (
             <>
               <Pressable style={est.cardShadow} onPress={() => router.navigate('/comisiones' as never)}>
@@ -408,7 +414,7 @@ const est = StyleSheet.create({
   // Tarjeta de comisión (fondo degradado navy → naranja de marca)
   // Capa de sombra aparte (la tarjeta tiene overflow:hidden y en iOS eso recorta la sombra).
   cardShadow: {
-    marginTop: 8,
+    marginTop: 28,
     borderRadius: 20,
     backgroundColor: color.primary,
     shadowColor: color.primaryDark,
