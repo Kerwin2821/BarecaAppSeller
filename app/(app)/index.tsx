@@ -152,12 +152,31 @@ export default function Home() {
         <>
           {/* Tarjeta de comisión (estilo tarjeta de crédito, con el logo Bareca) */}
           {cargando && !tot ? (
-            // Skeleton del MISMO alto que tarjeta + botón, para que al cargar no salte.
+            // Skeleton con la FORMA de la tarjeta (navy + barras tenues) y del botón,
+            // para que la carga se vea intencional y no salte cuando llegan los datos.
             <>
-              <Skeleton w="100%" h={196} r={20} />
-              <View style={{ marginTop: 16 }}>
-                <Skeleton w="100%" h={50} r={14} />
+              <View style={est.cardShadow}>
+                <View style={est.card}>
+                  <View style={est.cardInner}>
+                    <View style={est.cardTop}>
+                      <View style={[est.skelBar, { width: 130, height: 12 }]} />
+                      <View style={[est.skelBar, { width: 86, height: 22, opacity: 0.5 }]} />
+                    </View>
+                    <View style={[est.skelBar, { width: 190, height: 30, marginTop: 16 }]} />
+                    <View style={[est.cardStats, { marginTop: 18 }]}>
+                      <View>
+                        <View style={[est.skelBar, { width: 56, height: 10 }]} />
+                        <View style={[est.skelBar, { width: 100, height: 16, marginTop: 8 }]} />
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <View style={[est.skelBar, { width: 56, height: 10 }]} />
+                        <View style={[est.skelBar, { width: 100, height: 16, marginTop: 8 }]} />
+                      </View>
+                    </View>
+                  </View>
+                </View>
               </View>
+              <View style={{ marginTop: 16, height: 50, borderRadius: 14, backgroundColor: color.accent, opacity: 0.4 }} />
             </>
           ) : (
             <>
@@ -443,6 +462,7 @@ const est = StyleSheet.create({
     borderTopColor: 'rgba(255,255,255,0.18)',
   },
   cardStatLbl: { fontSize: 10.5, fontWeight: '700', color: 'rgba(255,255,255,0.72)' },
+  skelBar: { backgroundColor: 'rgba(255,255,255,0.28)', borderRadius: 7 },
   cardStatVal: { fontSize: 14, fontWeight: '800', color: '#fff', marginTop: 3 },
 
   rachaAlerta: { fontSize: 11.5, fontWeight: '800', color: color.danger, marginTop: 20, lineHeight: 15 },

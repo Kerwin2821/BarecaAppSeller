@@ -91,19 +91,21 @@ function Guardia({ children }: { children: React.ReactNode }) {
   if (!autenticado && !onbVisto && seg0 !== 'verificar') {
     return <Bienvenida onDone={() => setOnbVisto(true)} />
   }
-  // Sin sesión y en una ruta protegida (p.ej. el home, que es la ruta inicial):
-  // NO montamos la pantalla protegida mientras se resuelve el redirect a /login.
-  // Así el home nunca se monta con `user` nulo (eso hacía que "mostrara el logo y
-  // se cerrara" en el arranque en frío).
-  if (!autenticado && !PUBLICAS.includes(seg0)) {
-    return (
-      <View style={est.splash}>
-        <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
-        <LoaderBareca size={56} />
-      </View>
-    )
-  }
-  return <>{children}</>
+  // Sin sesión y en una ruta protegida (p.ej. el home, ruta inicial): mantenemos el
+  // Stack MONTADO —si no, `router.replace('/login')` falla con "REPLACE no manejado por
+  // ningún navegador"— y lo cubrimos con el splash mientras se resuelve el redirect.
+  const cubrirConSplash = !autenticado && !PUBLICAS.includes(seg0)
+  return (
+    <>
+      {children}
+      {cubrirConSplash ? (
+        <View style={[StyleSheet.absoluteFill, est.splash]}>
+          <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
+          <LoaderBareca size={56} />
+        </View>
+      ) : null}
+    </>
+  )
 }
 
 export default function RootLayout() {
