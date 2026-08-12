@@ -965,7 +965,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           </Tarjeta>
         ) : pago.otpState === 'verified' ? (
           // ── Pago · Éxito (ID de transacción + descargas) ───────
-          <PagoExito emision={pago.emision} cliente={cliente} onNuevo={reiniciar} />
+          <PagoExito emision={pago.emision} cliente={cliente} providerName={producto?.nombre} onNuevo={reiniciar} />
         ) : (
           // ── Paso 4 · Registro del Pago (dirigido por otpState, réplica de payment-step) ──
           <View style={{ gap: 12 }}>
@@ -1308,10 +1308,12 @@ function FilaResumen({ k, v }: { k: string; v: string }) {
 function PagoExito({
   emision,
   cliente,
+  providerName,
   onNuevo,
 }: {
   emision: Emision | null
   cliente: DatosCliente | null
+  providerName?: string
   onNuevo: () => void
 }) {
   // Animación "pop" del check al emitir (transacción exitosa).
@@ -1356,6 +1358,11 @@ function PagoExito({
         </Animated.View>
         <Text style={est.exitoTitulo}>¡Póliza Emitida!</Text>
         <Text style={est.exitoSub}>La póliza se generó correctamente. Comparte los documentos con tu cliente.</Text>
+        {providerName ? (
+          <View style={{ alignItems: 'center', marginTop: 10 }}>
+            <LogoAseg nombre={providerName} alto={30} />
+          </View>
+        ) : null}
         {emision?.numeroPoliza ? (
           <View style={est.exitoNumeroBox}>
             <Text style={est.exitoNumeroLabel}>Número de Póliza</Text>
