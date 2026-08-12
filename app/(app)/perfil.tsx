@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { Image, Modal as RNModal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import * as ImagePicker from 'expo-image-picker'
 import QRCode from 'react-native-qrcode-svg'
@@ -59,6 +59,7 @@ export default function Perfil() {
   const [tab, setTab] = useState<Tab>('info')
 
   const [fotoUrl, setFotoUrl] = useState<string | null>(null)
+  const [verFoto, setVerFoto] = useState(false)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
 
   useEffect(() => {
@@ -101,11 +102,25 @@ export default function Perfil() {
 
   return (
     <Pantalla>
+      {/* Visor de la foto de perfil ampliada (toca la imagen para abrir/cerrar) */}
+      {fotoUrl ? (
+        <RNModal visible={verFoto} transparent animationType="fade" onRequestClose={() => setVerFoto(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onPress={() => setVerFoto(false)}
+          >
+            <Image source={{ uri: fotoUrl }} style={{ width: '92%', height: '72%', borderRadius: 16 }} resizeMode="contain" />
+            <Text style={{ color: 'rgba(255,255,255,0.7)', marginTop: 16, fontSize: 12 }}>Toca para cerrar</Text>
+          </Pressable>
+        </RNModal>
+      ) : null}
       {/* Cabecera con avatar */}
       <Tarjeta style={{ padding: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           {fotoUrl ? (
-            <Image source={{ uri: fotoUrl }} style={{ width: 54, height: 54, borderRadius: 27 }} />
+            <Pressable onPress={() => setVerFoto(true)} hitSlop={6}>
+              <Image source={{ uri: fotoUrl }} style={{ width: 54, height: 54, borderRadius: 27 }} />
+            </Pressable>
           ) : (
             <Avatar texto={iniciales(nombre)} size={54} invertido />
           )}
