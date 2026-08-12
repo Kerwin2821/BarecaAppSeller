@@ -410,30 +410,43 @@ export function useEmisionPago() {
     }
     orden.current.clienteId = clienteId
 
-    // 2. Vehículo (solo RCV).
+    // 2. Vehículo (solo RCV). Como el portal: si el vehículo YA existe por placa se
+    //    REUSA su id; solo si no existe se registra. Evita el "Registro de vehículo
+    //    no existe" cuando la placa ya fue registrada (p.ej. en un reintento).
     if (sd.tipo === 'rcv') {
-      const r = await vehiculoRegApi.addRegistro({
-        peso: '0',
-        seririalNIV: c.serialNiv,
-        serialCarroceria: c.serialNiv,
-        serialMotor: c.serialMotor,
-        placa: c.placa,
-        uso: 'PARTICULAR',
-        tiposVehiculos: '',
-        marcas: c.marca,
-        modelos: c.modelo,
-        annios: c.anio ? String(c.anio) : '',
-        version: c.version ?? '',
-        numeroPuesto: String(sd.puestos || 5),
-        ejes: 2,
-        coloresVehiculos: c.color,
-        cliente: clienteId,
-        catVersionAnioId: c.catVersionAnioId ? String(c.catVersionAnioId) : null,
-        anioNum: c.anio ?? null,
-      }).catch((e) => {
-        throw new Error(`al registrar el vehículo — ${mensajeDeError(e)}`)
-      })
-      orden.current.registroVehiculoId = r?.data?.id ?? ''
+      let vehId = ''
+      const placa = (c.placa ?? '').trim().toUpperCase()
+      if (placa) {
+        const existentes = await vehiculoRegApi.porPlaca(placa).catch(() => [] as any[])
+        const arr = Array.isArray(existentes) ? existentes : ((existentes as { data?: any[] })?.data ?? [])
+        if (arr.length > 0 && arr[0]?.id) vehId = String(arr[0].id)
+      }
+      if (!vehId) {
+        const r = await vehiculoRegApi.addRegistro({
+          peso: '0',
+          seririalNIV: c.serialNiv,
+          serialCarroceria: c.serialNiv,
+          serialMotor: c.serialMotor,
+          placa: c.placa,
+          uso: 'PARTICULAR',
+          tiposVehiculos: '',
+          marcas: c.marca,
+          modelos: c.modelo,
+          annios: c.anio ? String(c.anio) : '',
+          version: c.version ?? '',
+          numeroPuesto: String(sd.puestos || 5),
+          ejes: 2,
+          coloresVehiculos: c.color,
+          cliente: clienteId,
+          catVersionAnioId: c.catVersionAnioId ? String(c.catVersionAnioId) : null,
+          anioNum: c.anio ?? null,
+        }).catch((e) => {
+          throw new Error(`al registrar el vehículo — ${mensajeDeError(e)}`)
+        })
+        vehId = r?.data?.id ?? ''
+      }
+      if (!vehId) throw new Error('al registrar el vehículo — no se obtuvo el id del registro.')
+      orden.current.registroVehiculoId = vehId
     }
   }, [])
 

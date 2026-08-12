@@ -28,7 +28,6 @@ import { bancoInfo, BANCOS_VE } from '@/lib/bancos'
 import { Pantalla } from '@/components/Pantalla'
 import { Alerta, Avatar, Boton, Campo, Tarjeta, TituloSeccion } from '@/components/Ui'
 import { color, fuenteMono } from '@/lib/tema'
-import { obtenerTokenPush } from '@/lib/push'
 
 type Tab = 'info' | 'seguridad' | 'pagos' | 'referido'
 
@@ -162,52 +161,10 @@ export default function Perfil() {
       {tab === 'pagos' ? <TabPagos /> : null}
       {tab === 'referido' ? <TabReferido /> : null}
 
-      <TarjetaTokenPush />
-
       <View style={{ marginTop: 22 }}>
         <Boton texto="Cerrar sesión" variante="peligro" onPress={salir} />
       </View>
     </Pantalla>
-  )
-}
-
-/* ═══════════ Token de notificaciones push (FCM) — para pruebas ═══════════ */
-function TarjetaTokenPush() {
-  const [token, setToken] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(true)
-
-  useEffect(() => {
-    let vivo = true
-    obtenerTokenPush().then((t) => {
-      if (!vivo) return
-      setToken(t)
-      setCargando(false)
-    })
-    return () => {
-      vivo = false
-    }
-  }, [])
-
-  return (
-    <View style={{ marginTop: 8 }}>
-      <TituloSeccion>Notificaciones push</TituloSeccion>
-      <Tarjeta style={{ padding: 16 }}>
-        <Text style={{ fontSize: 12, color: color.text3, marginBottom: 8, lineHeight: 17 }}>
-          Token FCM de este dispositivo (para la prueba en Firebase → «Enviar mensaje de prueba»). Mantén presionado para copiarlo.
-        </Text>
-        {cargando ? (
-          <Text style={{ fontSize: 12, color: color.text4 }}>Obteniendo token…</Text>
-        ) : token ? (
-          <Text selectable style={{ fontSize: 11.5, color: color.text, fontFamily: fuenteMono, lineHeight: 16 }}>
-            {token}
-          </Text>
-        ) : (
-          <Text style={{ fontSize: 12, color: color.amber, lineHeight: 17 }}>
-            No disponible aquí. El token solo se genera en un development build en un teléfono físico (Expo Go no lo entrega).
-          </Text>
-        )}
-      </Tarjeta>
-    </View>
   )
 }
 

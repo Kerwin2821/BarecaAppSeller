@@ -22,7 +22,6 @@ import {
   leerCredencialLogin,
   loginBiometricoListo,
   setBiometriaHabilitada,
-  tipoBiometria,
 } from '@/lib/biometria'
 import { Alerta, Boton, Campo } from '@/components/Ui'
 import { IcoHuella } from '@/components/Iconos'
@@ -45,13 +44,11 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [huellaLista, setHuellaLista] = useState(false)
-  const [bioTipo, setBioTipo] = useState('huella')
 
   // ¿Hay login biométrico configurado? (habilitado + credenciales guardadas)
   useEffect(() => {
     ;(async () => {
       setHuellaLista(await loginBiometricoListo())
-      setBioTipo((await tipoBiometria()).toLowerCase())
     })()
   }, [])
 
@@ -75,16 +72,15 @@ export default function Login() {
       // Tras un login exitoso, ofrece activar la huella (si el equipo la tiene
       // y aún no está configurada). El usuario decide.
       if (!requiereCambio && (await biometriaDisponible()) && !(await biometriaHabilitada())) {
-        const tipo = (await tipoBiometria()).toLowerCase()
         Alert.alert(
-          `Ingresar con ${tipo}`,
-          `¿Quieres activar el ingreso con ${tipo} para la próxima vez?`,
+          'Ingreso con huella',
+          '¿Quieres activar el ingreso con huella dactilar para la próxima vez?',
           [
             { text: 'Ahora no', style: 'cancel', onPress: () => router.replace('/') },
             {
               text: 'Activar',
               onPress: async () => {
-                const ok = await autenticarBiometria(`Activar ingreso con ${tipo}`)
+                const ok = await autenticarBiometria('Activar ingreso con huella dactilar')
                 if (ok) {
                   await guardarCredencialLogin({ identificador: id.trim(), password: pass })
                   await setBiometriaHabilitada(true)
@@ -114,7 +110,7 @@ export default function Login() {
 
   const ingresarConHuella = async () => {
     if (enviando) return
-    const ok = await autenticarBiometria(`Ingresar con ${bioTipo}`)
+    const ok = await autenticarBiometria('Ingresar con huella dactilar')
     if (!ok) return
     const cred = await leerCredencialLogin()
     if (!cred) {
@@ -135,7 +131,7 @@ export default function Login() {
       </View>
       <ScrollView
         style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{ paddingTop: insets.top + 40, paddingBottom: insets.bottom + 30, paddingHorizontal: 28 }}
+        contentContainerStyle={{ paddingTop: insets.top + 18, paddingBottom: insets.bottom + 14, paddingHorizontal: 28 }}
         keyboardShouldPersistTaps="handled"
       >
         <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
@@ -161,7 +157,7 @@ export default function Login() {
               setIdentificador(t)
               setError(null)
             }}
-            style={{ marginBottom: 14 }}
+            style={{ marginBottom: 12 }}
           />
           <Campo
             etiqueta="Contraseña"
@@ -188,7 +184,7 @@ export default function Login() {
           texto={enviando ? 'Verificando…' : 'Iniciar Sesión'}
           onPress={enviar}
           cargando={enviando}
-          style={{ marginTop: 20, paddingVertical: 14 }}
+          style={{ marginTop: 16, paddingVertical: 14 }}
         />
 
         {huellaLista ? (
@@ -209,8 +205,11 @@ export default function Login() {
           </>
         ) : null}
 
-        <Pressable onPress={() => router.push('/recuperar-contrasena')} style={{ marginTop: 16, alignSelf: 'center' }}>
+        <Pressable onPress={() => router.push('/recuperar-contrasena')} style={{ marginTop: 12, alignSelf: 'center' }}>
           <Text style={est.olvido}>¿Olvidaste tu contraseña?</Text>
+        </Pressable>
+        <Pressable onPress={() => router.push('/bienvenida')} style={{ marginTop: 7, alignSelf: 'center' }} hitSlop={6}>
+          <Text style={est.verIntro}>Ver introducción</Text>
         </Pressable>
 
         <View style={est.pieBloque}>
@@ -233,7 +232,7 @@ export default function Login() {
 }
 
 const est = StyleSheet.create({
-  logo: { width: 212, height: 66, resizeMode: 'contain', alignSelf: 'center', marginBottom: 20 },
+  logo: { width: 196, height: 61, resizeMode: 'contain', alignSelf: 'center', marginBottom: 12 },
   decor: { ...StyleSheet.absoluteFillObject },
   blobNaranja: { position: 'absolute', top: -130, right: -110, width: 320, height: 320, borderRadius: 160, backgroundColor: 'rgba(241,89,42,0.13)' },
   blobNavy: { position: 'absolute', bottom: -130, left: -120, width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(42,47,107,0.09)' },
@@ -242,7 +241,7 @@ const est = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: color.borderSoft,
-    padding: 18,
+    padding: 16,
     shadowColor: '#1C2150',
     shadowOpacity: 0.05,
     shadowRadius: 14,
@@ -254,25 +253,26 @@ const est = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
-    marginTop: 12,
-    paddingVertical: 13,
+    marginTop: 10,
+    paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: color.primary,
     backgroundColor: color.primaryLight,
   },
   huellaTexto: { fontSize: 14, fontWeight: '800', color: color.primaryDark },
-  divisor: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
+  divisor: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   divisorLinea: { flex: 1, height: 1, backgroundColor: color.borderSoft },
   divisorTxt: { fontSize: 11.5, fontWeight: '700', color: color.text4 },
-  parrafo: { fontSize: 13, color: color.text2, marginTop: 6, marginBottom: 20, textAlign: 'center', lineHeight: 19 },
+  parrafo: { fontSize: 13, color: color.text2, marginTop: 4, marginBottom: 12, textAlign: 'center', lineHeight: 18 },
   olvido: { fontSize: 12.5, fontWeight: '600', color: color.primary },
-  pieBloque: { alignItems: 'center', marginTop: 34 },
-  beca: { width: 120, height: 92, alignSelf: 'center', marginTop: 16, marginBottom: -6, transform: [{ translateX: 40 }] },
+  verIntro: { fontSize: 12, fontWeight: '600', color: color.text3 },
+  pieBloque: { alignItems: 'center', marginTop: 16 },
+  beca: { width: 108, height: 82, alignSelf: 'center', marginTop: 8, marginBottom: -6, transform: [{ translateX: 40 }] },
   portalPie: { fontSize: 13, fontWeight: '800', color: color.primary, textAlign: 'center', marginTop: 2 },
-  proveedores: { marginTop: 40, alignItems: 'center' },
-  proveedoresTitulo: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, color: color.text4, marginBottom: 12 },
+  proveedores: { marginTop: 16, alignItems: 'center' },
+  proveedoresTitulo: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0.6, color: color.text4, marginBottom: 8 },
   proveedoresFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18, flexWrap: 'wrap' },
-  provLogo: { width: 74, height: 34, resizeMode: 'contain', opacity: 0.85 },
-  pie: { marginTop: 30, fontSize: 11, color: color.text4, textAlign: 'center' },
+  provLogo: { width: 96, height: 44, resizeMode: 'contain', opacity: 0.85 },
+  pie: { marginTop: 14, fontSize: 11, color: color.text4, textAlign: 'center' },
 })

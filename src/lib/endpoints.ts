@@ -501,6 +501,9 @@ export const clientStageApi = {
 export const vehiculoRegApi = {
   /** Registra el vehículo → devuelve el id de registro para la orden. */
   addRegistro: (body: unknown) => bff<ApiResponse<any>>('/policies/registros-vehiculos/v1/addRegisterVehicle', { method: 'POST', body }),
+  /** Busca registros de vehículo por placa (para reusar el existente, como el portal). */
+  porPlaca: (placa: string) =>
+    bff<any[]>('/policies/registros-vehiculos', { params: { 'placa.equals': placa, page: 0, size: 20 }, sinCierre: true }),
 }
 
 // ── Funerario (planes/opciones de cobertura + emisión) ──────

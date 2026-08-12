@@ -26,8 +26,10 @@ export async function biometriaDisponible(): Promise<boolean> {
 export async function tipoBiometria(): Promise<'Huella' | 'Rostro' | 'Biometría'> {
   try {
     const tipos = await LocalAuthentication.supportedAuthenticationTypesAsync()
-    if (tipos.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Rostro'
+    // Priorizamos la HUELLA DACTILAR: es la que usamos como ingreso biométrico del
+    // app y la que traen casi todos los equipos. Solo si no hay huella caemos a rostro.
     if (tipos.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) return 'Huella'
+    if (tipos.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) return 'Rostro'
     return 'Biometría'
   } catch {
     return 'Biometría'

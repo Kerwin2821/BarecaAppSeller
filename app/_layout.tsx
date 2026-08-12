@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/inter'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { onboardingVisto } from '@/lib/onboarding'
+import Bienvenida from './bienvenida'
 import { aplicarFuenteInter } from '@/lib/fuente'
 import { ToastProvider } from '@/components/Toast'
 import { LoaderBareca } from '@/components/LoaderBareca'
@@ -47,7 +48,6 @@ function Guardia({ children }: { children: React.ReactNode }) {
   const segments = useSegments()
   const router = useRouter()
   const [onbVisto, setOnbVisto] = useState<boolean | null>(null)
-  const onbRedirigido = useRef(false)
 
   useEffect(() => {
     onboardingVisto().then(setOnbVisto)
@@ -64,12 +64,8 @@ function Guardia({ children }: { children: React.ReactNode }) {
       return
     }
     if (!autenticado) {
-      // Primer arranque (sin sesión): carrusel de bienvenida antes del login.
-      if (!onbVisto && !onbRedirigido.current && seg0 !== 'bienvenida' && seg0 !== 'verificar') {
-        onbRedirigido.current = true
-        router.replace('/bienvenida')
-        return
-      }
+      // El carrusel de bienvenida se muestra INLINE en el render (no por navegación),
+      // así que aquí solo encaminamos a login cuando corresponde.
       if (!enPublica) router.replace('/login')
       return
     }
@@ -87,11 +83,34 @@ function Guardia({ children }: { children: React.ReactNode }) {
   }
   // Con sesión activa y huella habilitada, exige desbloqueo antes de mostrar el app.
   if (autenticado && bloqueado) return <Bloqueo />
+  const seg0 = segments[0] ?? ''
+  // Primer arranque SIN sesión: mostramos el carrusel de bienvenida DIRECTAMENTE
+  // (no como ruta navegada). Como `bienvenida` es la primera pantalla del Stack,
+  // navegar a ella apilaba dos instancias ("carrusel doble"); renderizándola aquí
+  // solo hay una. Al terminar, marca visto y el Guardia encamina a /login.
+  if (!autenticado && !onbVisto && seg0 !== 'verificar') {
+    return <Bienvenida onDone={() => setOnbVisto(true)} />
+  }
+  // Sin sesión y en una ruta protegida (p.ej. el home, que es la ruta inicial):
+  // NO montamos la pantalla protegida mientras se resuelve el redirect a /login.
+  // Así el home nunca se monta con `user` nulo (eso hacía que "mostrara el logo y
+  // se cerrara" en el arranque en frío).
+  if (!autenticado && !PUBLICAS.includes(seg0)) {
+    return (
+      <View style={est.splash}>
+        <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
+        <LoaderBareca size={56} />
+      </View>
+    )
+  }
   return <>{children}</>
 }
 
 export default function RootLayout() {
-  const [fuentesListas] = useFonts({
+  // Cargamos Inter, pero NUNCA bloqueamos el arranque por la fuente: si el módulo
+  // nativo no está en el build o falla la carga, seguimos con la tipografía del
+  // sistema en vez de quedarnos congelados en el splash.
+  const [fuentesListas, fuentesError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -100,7 +119,7 @@ export default function RootLayout() {
     Inter_900Black,
   })
 
-  if (!fuentesListas) {
+  if (!fuentesListas && !fuentesError) {
     return (
       <View style={est.splash}>
         <Image source={require('../assets/logo-bareca.png')} style={est.logo} />

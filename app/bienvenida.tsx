@@ -28,7 +28,13 @@ const SLIDES: { img: number; titulo: string; desc: string }[] = [
   },
 ]
 
-export default function Bienvenida() {
+/**
+ * `onDone` se usa cuando el carrusel se muestra INLINE desde el Guardia (primer
+ * arranque): al terminar no navegamos, solo avisamos para que el Guardia deje de
+ * mostrarlo. Cuando se abre como ruta ("Ver introducción"), `onDone` va vacío y
+ * simplemente volvemos al login.
+ */
+export default function Bienvenida({ onDone }: { onDone?: () => void }) {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -38,7 +44,8 @@ export default function Bienvenida() {
 
   const finalizar = async () => {
     await marcarOnboardingVisto()
-    router.replace('/login')
+    if (onDone) onDone()
+    else router.replace('/login')
   }
   const siguiente = () => {
     if (ultima) return finalizar()
