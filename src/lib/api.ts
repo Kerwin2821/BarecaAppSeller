@@ -96,6 +96,8 @@ interface Opciones {
   sinCierre?: boolean
   /** Query params. */
   params?: Record<string, string | number | undefined | null>
+  /** Headers adicionales (p.ej. `x-app-key` del login sin captcha). */
+  headers?: Record<string, string>
 }
 
 function qs(params?: Record<string, string | number | undefined | null>): string {
@@ -115,7 +117,7 @@ function qs(params?: Record<string, string | number | undefined | null>): string
  * cada llamada decide cómo leerlo.
  */
 export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promise<T> {
-  const { method = 'GET', body, signal, sinCierre, params } = opts
+  const { method = 'GET', body, signal, sinCierre, params, headers: headersExtra } = opts
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -125,6 +127,7 @@ export async function bff<T = unknown>(ruta: string, opts: Opciones = {}): Promi
   if (cookieSesion) headers['Cookie'] = cookieSesion
   const esForm = typeof FormData !== 'undefined' && body instanceof FormData
   if (body !== undefined && !esForm) headers['Content-Type'] = 'application/json'
+  if (headersExtra) Object.assign(headers, headersExtra)
 
   let res: Response
   try {

@@ -18,6 +18,7 @@ import {
 } from '../lib/emisionPago'
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
+import { LogoBanco } from './LogoBanco'
 import { Spinner } from './Estados'
 import { PasoCliente, type DatosCliente } from './PasoCliente'
 import { useToast } from './Toast'
@@ -116,6 +117,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const [claseId, setClaseId] = useState<string | null>(null)
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [riesgos, setRiesgos] = useState<Record<string, boolean>>({})
+  const [riesgosAbierto, setRiesgosAbierto] = useState(false)
 
   const [planes, setPlanes] = useState<any[]>([])
   const [planIdx, setPlanIdx] = useState<number | null>(null)
@@ -506,7 +508,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
           <>
             {/* 1. Tipo de seguro */}
             <Text style={est.seccion}>1. ¿Qué tipo de seguro deseas cotizar?</Text>
-            <View style={est.cards}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={est.cards}>
               {TIPOS.map((t, i) => {
                 const sel = t.activo && tipo === t.valor
                 return (
@@ -531,7 +533,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                   </Pressable>
                 )
               })}
-            </View>
+            </ScrollView>
 
             {tipo === 'rcv' ? (
               <>
@@ -542,11 +544,11 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     <Text style={est.hint}>Cargando aseguradoras…</Text>
                   </Tarjeta>
                 ) : (
-                  <View style={{ gap: 10 }}>
+                  <View style={est.grid2}>
                     {productos.map((p) => {
                       const sel = p.productoId === productoId
                       return (
-                        <Pressable key={p.productoId} onPress={() => setProductoId(p.productoId)}>
+                        <Pressable key={p.productoId} onPress={() => setProductoId(p.productoId)} style={est.col2}>
                           <Tarjeta style={[est.aseg, sel && est.asegSel]}>
                             <LogoAseg nombre={p.nombre} fondoOscuro={sel} alto={30} />
                             <Text style={[est.asegTexto, { marginTop: 8 }, sel && { color: '#fff' }]}>{p.nombre}</Text>
@@ -580,22 +582,29 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       />
                     </Tarjeta>
 
-                    {/* Info adicional de riesgo */}
-                    <Text style={est.seccion}>Información Adicional de Riesgo</Text>
-                    <Text style={est.hint}>Selecciona las opciones que apliquen para ajustar el precio.</Text>
-                    <View style={{ gap: 10, marginTop: 8 }}>
-                      {RIESGOS.map((r) => (
-                        <Tarjeta key={r.id} style={est.riesgo}>
-                          <Text style={est.riesgoTexto}>{r.texto}</Text>
-                          <Switch
-                            value={!!riesgos[r.id]}
-                            onValueChange={(v) => setRiesgos((s) => ({ ...s, [r.id]: v }))}
-                            trackColor={{ true: color.primary, false: '#CBD5E1' }}
-                            thumbColor="#fff"
-                          />
-                        </Tarjeta>
-                      ))}
-                    </View>
+                    {/* Info adicional de riesgo (colapsable) */}
+                    <Pressable onPress={() => setRiesgosAbierto((v) => !v)} style={est.riesgoHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={est.riesgoHeaderTit}>Información Adicional de Riesgo</Text>
+                        <Text style={est.hint}>Opcional — toca para ajustar el precio según el riesgo.</Text>
+                      </View>
+                      <Text style={est.chevron}>{riesgosAbierto ? '▴' : '▾'}</Text>
+                    </Pressable>
+                    {riesgosAbierto ? (
+                      <View style={{ gap: 10, marginTop: 10 }}>
+                        {RIESGOS.map((r) => (
+                          <Tarjeta key={r.id} style={est.riesgo}>
+                            <Text style={est.riesgoTexto}>{r.texto}</Text>
+                            <Switch
+                              value={!!riesgos[r.id]}
+                              onValueChange={(v) => setRiesgos((s) => ({ ...s, [r.id]: v }))}
+                              trackColor={{ true: color.primary, false: '#CBD5E1' }}
+                              thumbColor="#fff"
+                            />
+                          </Tarjeta>
+                        ))}
+                      </View>
+                    ) : null}
 
                     <Boton
                       texto={cargando.planes ? 'Cotizando…' : 'Cotizar Planes'}
@@ -609,9 +618,11 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     {planes.length > 0 ? (
                       <>
                         <Text style={est.seccion}>4. Selecciona el plan ideal para tu cliente</Text>
-                        <View style={{ gap: 12 }}>
+                        <View style={est.grid2}>
                           {planes.map((pl, i) => (
-                            <PlanCard key={i} plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} providerName={producto?.nombre} />
+                            <View key={i} style={est.col2}>
+                              <PlanCard plan={pl} activo={i === planIdx} onPress={() => setPlanIdx(i)} providerName={producto?.nombre} />
+                            </View>
                           ))}
                         </View>
 
@@ -1049,7 +1060,14 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                           </View>
                         </View>
                       ) : null}
-                      <Dropdown etiqueta="Banco Emisor" placeholder="Selecciona tu banco" opciones={bancosOpc} valor={bancoPago || null} onCambiar={setBancoPago} />
+                      <Dropdown
+                        etiqueta="Banco Emisor"
+                        placeholder="Selecciona tu banco"
+                        opciones={bancosOpc}
+                        valor={bancoPago || null}
+                        onCambiar={setBancoPago}
+                        renderIcono={(o) => <LogoBanco codigo={o.valor} size={26} />}
+                      />
                       <View>
                         <Text style={est.label}>Cédula del Titular</Text>
                         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1374,11 +1392,13 @@ const est = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
   seccion: { fontSize: 14.5, fontWeight: '800', color: color.text, marginTop: 22, marginBottom: 10 },
   hint: { fontSize: 12, color: color.text3, lineHeight: 17 },
-  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  cards: { flexDirection: 'row', gap: 10, paddingRight: 4, paddingVertical: 2 },
   card: {
-    width: '47%', flexGrow: 1, backgroundColor: color.white, borderWidth: 1, borderColor: color.borderSoft,
-    borderRadius: 14, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', minHeight: 96,
+    width: 130, backgroundColor: color.white, borderWidth: 1, borderColor: color.borderSoft,
+    borderRadius: 14, paddingVertical: 20, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', minHeight: 106,
   },
+  grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  col2: { width: '47%', flexGrow: 1 },
   cardSel: { borderColor: color.primary, borderWidth: 2, backgroundColor: color.primaryLight },
   cardOff: { opacity: 0.6 },
   cardEmoji: { fontSize: 26, marginBottom: 6 },
@@ -1390,6 +1410,9 @@ const est = StyleSheet.create({
   asegTexto: { fontSize: 13.5, fontWeight: '700', color: color.text, textAlign: 'center' },
   riesgo: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   riesgoTexto: { flex: 1, fontSize: 12, color: color.text2, lineHeight: 17 },
+  riesgoHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 22 },
+  riesgoHeaderTit: { fontSize: 14.5, fontWeight: '800', color: color.text },
+  chevron: { fontSize: 15, fontWeight: '900', color: color.primary },
   planTitulo: { fontSize: 15, fontWeight: '800', color: color.text },
   planPrima: { fontSize: 18, fontWeight: '800', color: color.primary, marginTop: 8 },
   planPrimaSub: { fontSize: 12, fontWeight: '600', color: color.text3 },

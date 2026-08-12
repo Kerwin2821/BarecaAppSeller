@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { Spinner } from './Estados'
 import { color, radio } from '../lib/tema'
@@ -20,6 +20,7 @@ export function Dropdown({
   onCambiar,
   cargando = false,
   deshabilitado = false,
+  renderIcono,
 }: {
   etiqueta?: string
   placeholder?: string
@@ -28,6 +29,8 @@ export function Dropdown({
   onCambiar: (valor: string) => void
   cargando?: boolean
   deshabilitado?: boolean
+  /** Ícono/logo opcional a la izquierda de cada opción (p.ej. logo del banco). */
+  renderIcono?: (opcion: OpcionDrop) => ReactNode
 }) {
   const [abierto, setAbierto] = useState(false)
   const [busca, setBusca] = useState('')
@@ -51,6 +54,7 @@ export function Dropdown({
         }}
         style={[est.campo, (deshabilitado || cargando) && { backgroundColor: color.bgCard, opacity: 0.7 }]}
       >
+        {renderIcono && seleccionado ? <View style={{ marginRight: 2 }}>{renderIcono(seleccionado)}</View> : null}
         <Text style={[est.valor, !seleccionado && { color: color.text4 }]} numberOfLines={1}>
           {seleccionado?.texto ?? placeholder}
         </Text>
@@ -89,6 +93,7 @@ export function Dropdown({
                   }}
                   style={({ pressed }) => [est.item, (activo || pressed) && { backgroundColor: color.primaryTint }]}
                 >
+                  {renderIcono ? <View style={{ marginRight: 10 }}>{renderIcono(item)}</View> : null}
                   <Text style={[est.itemTexto, activo && { color: color.primaryDark, fontWeight: '800' }]}>
                     {item.texto}
                   </Text>

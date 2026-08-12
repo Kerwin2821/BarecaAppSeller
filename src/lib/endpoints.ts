@@ -25,6 +25,19 @@ export const authApi = {
       sinCierre: true,
     }),
 
+  /**
+   * Login del APP (sin Cloudflare): endpoint dedicado del BFF que NO exige
+   * captcha. Se autoriza con el header `x-app-key` (EXPO_PUBLIC_APP_KEY) y
+   * `dispositive:'APP'`. Devuelve el mismo `{ data: { logindID } }`.
+   */
+  validarLoginsApp: (payload: ValidateLoginPayload) =>
+    bff<ApiResponse<{ logindID: string }>>('/auth/logins/v1/validar-logins-app', {
+      method: 'POST',
+      body: payload,
+      sinCierre: true,
+      headers: { 'x-app-key': process.env.EXPO_PUBLIC_APP_KEY ?? '' },
+    }),
+
   generaToken: (loginId: string) =>
     bff<ApiResponse<unknown>>('/auth/secciones-tokens/v1/generaToken', {
       method: 'POST',
@@ -159,6 +172,21 @@ export const notifApi = {
     bff<ApiResponse<number[]>>('/notifications/read', { params: { loginId } }),
   markRead: (loginId: string, id: number) =>
     bff<ApiResponse<unknown>>('/notifications/read', { method: 'POST', body: { id, loginId } }),
+  /**
+   * Registra el token de push (FCM) del dispositivo, asociado al usuario, para
+   * que el panel administrativo pueda enviarle notificaciones. El backend/BFF
+   * debe exponer esta ruta y guardar `token` en el campo correspondiente.
+   * (Ajusta la ruta si en el backend queda con otro nombre.)
+   */
+  registrarDispositivo: (payload: {
+    loginId: string
+    tipoActor: string
+    actorUuid: string
+    deviceId: string
+    token: string
+    plataforma: 'ANDROID' | 'IOS'
+  }) =>
+    bff<ApiResponse<unknown>>('/notifications/dispositivos/v1/registrar-token', { method: 'POST', body: payload }),
 }
 
 // ── Reporte de pólizas ──────────────────────────────────────

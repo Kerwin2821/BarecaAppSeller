@@ -123,12 +123,8 @@ export const MENU: ItemMenu[] = [
   },
 ]
 
-// Opciones ya presentes en el home (barra inferior + accesos rápidos): se ocultan
-// del menú de hamburguesa para no duplicarlas. Quedan en el drawer solo las demás.
-const EN_HOME = new Set(['/nueva-venta', '/polizas', '/comisiones', '/reporte', '/rachas', '/equipo', '/soporte', '/perfil'])
-
 export function menuPorRol(rol: UserRole | null | undefined): ItemMenu[] {
-  return MENU.filter((m) => m.visible(rol) && !EN_HOME.has(m.ruta))
+  return MENU.filter((m) => m.visible(rol))
 }
 
 export function tituloDeRuta(ruta: string): string {

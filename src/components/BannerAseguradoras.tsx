@@ -17,7 +17,7 @@ function Fila({ onAncho }: { onAncho?: (w: number) => void }) {
     >
       {LOGOS.map((src, i) => (
         <View key={i} style={est.chip}>
-          <Image source={src} resizeMode="contain" style={{ height: 26, width: 96 }} />
+          <Image source={src} resizeMode="contain" style={{ height: 52, width: 164 }} />
         </View>
       ))}
     </View>
@@ -35,7 +35,7 @@ export function BannerAseguradoras() {
     const anim = Animated.loop(
       Animated.timing(x, {
         toValue: -ancho,
-        duration: Math.max(4000, Math.round(ancho * 22)),
+        duration: Math.max(9000, Math.round(ancho * 45)),
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -58,19 +58,24 @@ export function BannerAseguradoras() {
 }
 
 const est = StyleSheet.create({
-  wrap: { marginTop: 18 },
-  titulo: { fontSize: 11.5, fontWeight: '700', color: color.text3, letterSpacing: 0.3, marginBottom: 8 },
-  pista: { height: 46, overflow: 'hidden', justifyContent: 'center' },
+  wrap: { marginTop: 14 },
+  titulo: { fontSize: 11.5, fontWeight: '700', color: color.text3, letterSpacing: 0.3, marginBottom: 10 },
+  pista: { height: 88, overflow: 'hidden', justifyContent: 'center' },
   track: { flexDirection: 'row' },
-  fila: { flexDirection: 'row', gap: 10, paddingRight: 10 },
+  fila: { flexDirection: 'row', gap: 14, paddingRight: 14 },
   chip: {
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: color.borderSoft,
-    paddingHorizontal: 12,
-    height: 42,
+    paddingHorizontal: 24,
+    height: 74,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#1C2150',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
 })

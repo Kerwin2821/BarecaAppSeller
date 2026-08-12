@@ -3,10 +3,7 @@ import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePathname, useRouter } from 'expo-router'
 import { useAuth } from '../lib/auth'
-import { etiquetaRol } from '../lib/roles'
-import { iniciales } from '../lib/formato'
 import { menuPorRol, type ItemMenu } from './menu'
-import { Avatar } from './Ui'
 import { IcoSalir } from './Iconos'
 import { color, radio } from '../lib/tema'
 
@@ -70,16 +67,6 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
               <Image source={require('../../assets/logo-bareca.png')} style={est.logo} />
             </View>
 
-            <View style={est.usuario}>
-              <Avatar texto={iniciales(`${user?.firstName} ${user?.lastName}`.trim() || user?.email)} size={40} invertido />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={est.usuarioNombre} numberOfLines={1}>
-                  {`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'}
-                </Text>
-                <Text style={est.usuarioRol}>{etiquetaRol(user?.role)}{user?.code ? ` · ${user.code}` : ''}</Text>
-              </View>
-            </View>
-
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 12 }}>
               {grupos.map((g) => {
                 const delGrupo = items.filter((i) => i.grupo === g)
@@ -141,19 +128,15 @@ const est = StyleSheet.create({
     borderRightColor: color.borderSoft,
     paddingHorizontal: 12,
   },
-  marca: { paddingHorizontal: 6, paddingBottom: 8 },
-  logo: { width: 154, height: 48, resizeMode: 'contain' },
-  usuario: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    backgroundColor: color.primaryTint,
-    borderRadius: radio.md + 2,
-    padding: 11,
-    marginTop: 4,
+  marca: {
+    paddingHorizontal: 6,
+    paddingTop: 2,
+    paddingBottom: 14,
+    marginBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: color.borderSoft,
   },
-  usuarioNombre: { fontSize: 13.5, fontWeight: '800', color: color.text },
-  usuarioRol: { fontSize: 11, color: color.text3, marginTop: 1 },
+  logo: { width: 160, height: 50, resizeMode: 'contain' },
   grupo: { fontSize: 9.5, fontWeight: '800', letterSpacing: 0.8, color: color.text4, paddingHorizontal: 8, marginBottom: 4 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: radio.md },
   itemActivo: { backgroundColor: color.primaryLight },

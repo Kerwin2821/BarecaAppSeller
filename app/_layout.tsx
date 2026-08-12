@@ -1,15 +1,29 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import {
+  useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+} from '@expo-google-fonts/inter'
 import { AuthProvider, useAuth } from '@/lib/auth'
+import { onboardingVisto } from '@/lib/onboarding'
+import { aplicarFuenteInter } from '@/lib/fuente'
 import { ToastProvider } from '@/components/Toast'
-import { Spinner } from '@/components/Estados'
+import { LoaderBareca } from '@/components/LoaderBareca'
 import { color } from '@/lib/tema'
 
+// Aplica Inter a todo el texto del app (parchea Text.render una vez).
+aplicarFuenteInter()
+
 /** Rutas accesibles sin sesión. */
-const PUBLICAS = ['login', 'recuperar-contrasena', 'verificar']
+const PUBLICAS = ['login', 'recuperar-contrasena', 'verificar', 'bienvenida']
 
 /** Pantalla de bloqueo por huella (sesión activa, esperando desbloqueo). */
 function Bloqueo() {
@@ -32,9 +46,15 @@ function Guardia({ children }: { children: React.ReactNode }) {
   const { listo, autenticado, cambioClave, bloqueado } = useAuth()
   const segments = useSegments()
   const router = useRouter()
+  const [onbVisto, setOnbVisto] = useState<boolean | null>(null)
+  const onbRedirigido = useRef(false)
 
   useEffect(() => {
-    if (!listo) return
+    onboardingVisto().then(setOnbVisto)
+  }, [])
+
+  useEffect(() => {
+    if (!listo || onbVisto === null) return
     const seg0 = segments[0] ?? ''
     const enPublica = PUBLICAS.includes(seg0)
     const enCambio = seg0 === 'cambiar-clave'
@@ -44,18 +64,24 @@ function Guardia({ children }: { children: React.ReactNode }) {
       return
     }
     if (!autenticado) {
+      // Primer arranque (sin sesión): carrusel de bienvenida antes del login.
+      if (!onbVisto && !onbRedirigido.current && seg0 !== 'bienvenida' && seg0 !== 'verificar') {
+        onbRedirigido.current = true
+        router.replace('/bienvenida')
+        return
+      }
       if (!enPublica) router.replace('/login')
       return
     }
-    // Autenticado: si está en login/cambiar-clave, entrar al app.
-    if (seg0 === 'login' || enCambio) router.replace('/')
-  }, [listo, autenticado, cambioClave, segments, router])
+    // Autenticado: si está en login/cambiar-clave/bienvenida, entrar al app.
+    if (seg0 === 'login' || enCambio || seg0 === 'bienvenida') router.replace('/')
+  }, [listo, onbVisto, autenticado, cambioClave, segments, router])
 
-  if (!listo) {
+  if (!listo || onbVisto === null) {
     return (
       <View style={est.splash}>
         <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
-        <Spinner size="large" />
+        <LoaderBareca size={56} />
       </View>
     )
   }
@@ -65,6 +91,24 @@ function Guardia({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  const [fuentesListas] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+  })
+
+  if (!fuentesListas) {
+    return (
+      <View style={est.splash}>
+        <Image source={require('../assets/logo-bareca.png')} style={est.logo} />
+        <LoaderBareca size={56} />
+      </View>
+    )
+  }
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -72,6 +116,7 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <Guardia>
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: color.bgApp } }}>
+              <Stack.Screen name="bienvenida" />
               <Stack.Screen name="login" />
               <Stack.Screen name="recuperar-contrasena" />
               <Stack.Screen name="cambiar-clave" />

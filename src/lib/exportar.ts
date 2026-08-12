@@ -94,9 +94,9 @@ export function htmlReporte(opts: {
   const th = headers
     .map(
       (h, i) =>
-        `<th style="background:#1976D2;color:#fff;padding:7px 9px;font-size:10px;text-align:${
+        `<th style="background:#2A2F6B;color:#fff;padding:7px 9px;font-size:10px;text-align:${
           numericas.includes(i) ? 'right' : 'left'
-        };border:1px solid #1565C0;">${esc(h)}</th>`,
+        };border:1px solid #1C2150;">${esc(h)}</th>`,
     )
     .join('')
   const body = filas

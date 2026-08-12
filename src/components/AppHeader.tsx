@@ -9,11 +9,11 @@ import { desenvolver } from '../lib/api'
 import { useApi } from '../hooks/useApi'
 import type { Notificacion } from '../lib/tipos'
 import { useDrawer } from './Drawer'
-import { IcoCampana, IcoMenu } from './Iconos'
+import { IcoAtras, IcoCampana, IcoMenu } from './Iconos'
 import { CargandoBloque, EstadoVacio } from './Estados'
 import { color } from '../lib/tema'
 
-export function AppHeader({ titulo }: { titulo: string }) {
+export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () => void }) {
   const insets = useSafeAreaInsets()
   const { abrir } = useDrawer()
   const { user } = useAuth()
@@ -42,6 +42,11 @@ export function AppHeader({ titulo }: { titulo: string }) {
 
   return (
     <View style={[est.header, { paddingTop: insets.top + 8 }]}>
+      {onVolver ? (
+        <Pressable onPress={onVolver} hitSlop={10} style={est.iconBtn}>
+          <IcoAtras color={color.text} size={22} />
+        </Pressable>
+      ) : null}
       <Pressable onPress={abrir} hitSlop={10} style={est.iconBtn}>
         <IcoMenu color={color.text} />
       </Pressable>

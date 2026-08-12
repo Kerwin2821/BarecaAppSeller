@@ -1,12 +1,13 @@
 import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { rachasApi } from '@/lib/endpoints'
-import { actorUuid } from '@/lib/roles'
+import { actorUuid, puedeVender } from '@/lib/roles'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, Skeleton } from '@/components/Estados'
-import { Tarjeta } from '@/components/Ui'
+import { Boton, Tarjeta } from '@/components/Ui'
 import { color } from '@/lib/tema'
 
 /**
@@ -55,6 +56,7 @@ export default function Rachas() {
       ) : (
         <View style={{ gap: 14 }}>
           {resumen ? <Hero r={resumen} /> : null}
+          {resumen ? <GuiaRacha r={resumen} /> : null}
 
           {completados > 0 ? (
             <View style={est.banner}>
@@ -123,6 +125,43 @@ function Hero({ r }: { r: any }) {
       </View>
       {r?.mensaje ? <Text style={[est.mensaje, peligro && { color: color.danger }]}>{String(r.mensaje)}</Text> : null}
     </View>
+  )
+}
+
+/** Guía accionable de cómo cumplir la racha (más marcada cuando está en peligro). */
+function GuiaRacha({ r }: { r: any }) {
+  const router = useRouter()
+  const { user } = useAuth()
+  const peligro = r?.estado === 'peligro' || r?.enPeligro === true
+  const racha = typeof r?.racha === 'number' ? r.racha : 0
+  const puedeV = puedeVender(user?.role)
+  const PASOS = [
+    'Emite al menos 1 póliza hoy.',
+    'Cada día con una venta mantiene y suma tu racha.',
+    'Si dejas pasar un día sin ventas, la racha vuelve a 0.',
+  ]
+  return (
+    <Tarjeta style={[est.guia, peligro && { borderColor: color.danger, borderWidth: 1.5 }]}>
+      <Text style={est.guiaTitulo}>{peligro ? '⚠️ ¿Cómo salvo mi racha?' : '✅ ¿Cómo mantengo mi racha?'}</Text>
+      <Text style={[est.guiaSub, peligro && { color: color.danger }]}>
+        {peligro
+          ? racha > 0
+            ? `Hoy aún no registras ventas. Emite 1 póliza para no perder tu racha de ${racha} ${racha === 1 ? 'día' : 'días'}.`
+            : 'Aún no tienes racha. Emite 1 póliza hoy para empezarla.'
+          : 'Vas al día. Sigue emitiendo para conservar tu racha.'}
+      </Text>
+      <View style={{ gap: 8, marginTop: 12 }}>
+        {PASOS.map((p, i) => (
+          <View key={i} style={est.guiaPaso}>
+            <Text style={est.guiaPasoIco}>{i + 1}</Text>
+            <Text style={est.guiaPasoTxt}>{p}</Text>
+          </View>
+        ))}
+      </View>
+      {puedeV ? (
+        <Boton texto="Vender ahora" onPress={() => router.navigate('/nueva-venta' as never)} style={{ marginTop: 14 }} />
+      ) : null}
+    </Tarjeta>
   )
 }
 
@@ -230,6 +269,23 @@ const est = StyleSheet.create({
   bannerTxt: { fontSize: 12.5, fontWeight: '700', color: color.success, lineHeight: 18 },
   seccion: { fontSize: 15, fontWeight: '800', color: color.text },
   vacio: { fontSize: 13, color: color.text3, textAlign: 'center' },
+  guia: { padding: 16 },
+  guiaTitulo: { fontSize: 14.5, fontWeight: '800', color: color.text },
+  guiaSub: { fontSize: 12.5, color: color.text2, marginTop: 5, lineHeight: 18, fontWeight: '600' },
+  guiaPaso: { flexDirection: 'row', gap: 9, alignItems: 'center' },
+  guiaPasoIco: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: color.primaryLight,
+    color: color.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 20,
+    overflow: 'hidden',
+  },
+  guiaPasoTxt: { flex: 1, fontSize: 12.5, color: color.text2, lineHeight: 18 },
   reto: { padding: 16 },
   retoTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   retoIcono: { fontSize: 26 },

@@ -16,7 +16,12 @@ export default function AppLayout() {
       <View style={{ flex: 1, backgroundColor: color.bgApp }}>
         <Stack
           screenOptions={{
-            header: ({ options }) => <AppHeader titulo={options.title ?? 'Bareca'} />,
+            header: ({ options, navigation, back, route }) => (
+              <AppHeader
+                titulo={options.title ?? 'Bareca'}
+                onVolver={back && route.name !== 'index' ? () => navigation.goBack() : undefined}
+              />
+            ),
             contentStyle: { backgroundColor: color.bgApp },
           }}
         >

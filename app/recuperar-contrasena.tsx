@@ -4,13 +4,17 @@ import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { authApi } from '@/lib/endpoints'
 import { mensajeDeError } from '@/lib/api'
-import { MedidorClave, fuerzaClave } from '@/components/MedidorClave'
 import { Alerta, Boton, Campo, Tarjeta } from '@/components/Ui'
 import { color } from '@/lib/tema'
 
-type Paso = 'correo' | 'otp' | 'nueva'
+type Paso = 'correo' | 'otp' | 'listo'
 
-/** Recuperación de contraseña por OTP al correo (passwords/v2 del BFF). */
+/**
+ * Recuperación de contraseña por OTP al correo (passwords/v2 del BFF). Igual que
+ * el portal web: correo → OTP. Al validar el OTP correctamente, el backend envía
+ * las credenciales nuevas al correo del usuario (no se define una clave nueva en
+ * la app). Por eso el flujo termina con un mensaje de éxito y vuelta al login.
+ */
 export default function RecuperarContrasena() {
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -18,8 +22,6 @@ export default function RecuperarContrasena() {
   const [paso, setPaso] = useState<Paso>('correo')
   const [correo, setCorreo] = useState('')
   const [otp, setOtp] = useState('')
-  const [nueva, setNueva] = useState('')
-  const [confirmacion, setConfirmacion] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -43,44 +45,22 @@ export default function RecuperarContrasena() {
     }
   }
 
-  const validarOtp = async () => {
+  const validarOtp = async (codigo?: string) => {
     if (enviando) return
-    if (otp.trim().length < 4) {
-      setError('Ingrese el código recibido.')
+    const code = (codigo ?? otp).trim()
+    if (code.length < 6) {
+      setError('Ingrese el código de 6 dígitos.')
       return
     }
     setEnviando(true)
     setError(null)
     try {
-      await authApi.validarOtpRecovery(correo.trim(), otp.trim())
+      await authApi.validarOtpRecovery(correo.trim(), code)
       setOk(null)
-      setPaso('nueva')
+      setPaso('listo')
     } catch (e) {
       setError(mensajeDeError(e))
     } finally {
-      setEnviando(false)
-    }
-  }
-
-  const guardarNueva = async () => {
-    if (enviando) return
-    if (nueva.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres.')
-      return
-    }
-    if (nueva !== confirmacion) {
-      setError('La confirmación no coincide.')
-      return
-    }
-    setEnviando(true)
-    setError(null)
-    try {
-      // El flujo v2 valida el OTP y habilita el cambio; reutilizamos el endpoint
-      // de actualización con el correo como identificador.
-      await authApi.actualizarPass({ loginId: correo.trim(), passNueva: nueva })
-      router.replace('/login')
-    } catch (e) {
-      setError(mensajeDeError(e))
       setEnviando(false)
     }
   }
@@ -99,8 +79,8 @@ export default function RecuperarContrasena() {
             {paso === 'correo'
               ? 'Ingresa tu correo y te enviaremos un código.'
               : paso === 'otp'
-                ? 'Ingresa el código que enviamos a tu correo.'
-                : 'Crea tu nueva contraseña.'}
+                ? 'Ingresa el código de 6 dígitos que enviamos a tu correo.'
+                : '¡Recuperación exitosa!'}
           </Text>
 
           {ok ? (
@@ -129,41 +109,25 @@ export default function RecuperarContrasena() {
               etiqueta="Código"
               placeholder="123456"
               keyboardType="number-pad"
+              maxLength={6}
               value={otp}
               onChangeText={(t) => {
-                setOtp(t)
+                const digitos = t.replace(/\D/g, '').slice(0, 6)
+                setOtp(digitos)
                 setError(null)
+                // Auto-valida al completar los 6 dígitos (sin tocar el botón).
+                if (digitos.length === 6 && !enviando) void validarOtp(digitos)
               }}
               style={{ marginTop: 14 }}
             />
           ) : null}
 
-          {paso === 'nueva' ? (
-            <>
-              <Campo
-                etiqueta="Nueva contraseña"
-                placeholder="Mínimo 8 caracteres"
-                secureTextEntry
-                value={nueva}
-                onChangeText={(t) => {
-                  setNueva(t)
-                  setError(null)
-                }}
-                style={{ marginTop: 14 }}
-              />
-              <MedidorClave clave={nueva} />
-              <Campo
-                etiqueta="Confirme la contraseña"
-                placeholder="Repita la contraseña"
-                secureTextEntry
-                value={confirmacion}
-                onChangeText={(t) => {
-                  setConfirmacion(t)
-                  setError(null)
-                }}
-                style={{ marginTop: 14 }}
-              />
-            </>
+          {paso === 'listo' ? (
+            <View style={{ marginTop: 14 }}>
+              <Alerta tipo="exito">
+                Tus nuevas credenciales han sido enviadas a tu correo electrónico. Revísalo e inicia sesión con la contraseña nueva.
+              </Alerta>
+            </View>
           ) : null}
 
           {error ? (
@@ -172,21 +136,20 @@ export default function RecuperarContrasena() {
             </View>
           ) : null}
 
-          <Boton
-            texto={
-              enviando
-                ? 'Procesando…'
-                : paso === 'correo'
-                  ? 'Enviar código'
-                  : paso === 'otp'
-                    ? 'Validar código'
-                    : 'Guardar contraseña'
-            }
-            onPress={paso === 'correo' ? pedirOtp : paso === 'otp' ? validarOtp : guardarNueva}
-            cargando={enviando}
-            disabled={paso === 'nueva' && (nueva.length < 8 || fuerzaClave(nueva) < 2)}
-            style={{ marginTop: 20, paddingVertical: 13 }}
-          />
+          {paso === 'listo' ? (
+            <Boton
+              texto="Ir al inicio de sesión"
+              onPress={() => router.replace('/login')}
+              style={{ marginTop: 20, paddingVertical: 13 }}
+            />
+          ) : (
+            <Boton
+              texto={enviando ? 'Procesando…' : paso === 'correo' ? 'Enviar código' : 'Validar código'}
+              onPress={paso === 'correo' ? pedirOtp : () => validarOtp()}
+              cargando={enviando}
+              style={{ marginTop: 20, paddingVertical: 13 }}
+            />
+          )}
           <Pressable onPress={() => router.replace('/login')} style={{ marginTop: 14, alignSelf: 'center' }}>
             <Text style={est.volver}>Volver al inicio de sesión</Text>
           </Pressable>

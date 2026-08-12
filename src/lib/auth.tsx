@@ -124,19 +124,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 1. Construir el payload (el backend autodetecta correo/teléfono/usuario).
     const payload: ValidateLoginPayload = {
       pass: datos.password, // el BFF hashea con la sal secreta; se envía en claro por HTTPS
-      dispositive: 'WEB',
+      dispositive: 'APP', // login del app: endpoint dedicado sin Cloudflare
       deviceId,
-      recaptchaToken: datos.turnstileToken,
-      latitud: datos.coords ? String(datos.coords.latitude) : '0',
-      longitud: datos.coords ? String(datos.coords.longitude) : '0',
     }
     const id = datos.identificador.trim()
     if (EMAIL_RE.test(id)) payload.correo = id
     else if (TEL_RE.test(id)) payload.telefono = aInternacional(id)
     else payload.usuario = id
 
-    // 2. validar-logins → loginId
-    const validar = await authApi.validarLogins(payload)
+    // 2. validar-logins-app → loginId (endpoint del app sin captcha; header x-app-key)
+    const validar = await authApi.validarLoginsApp(payload)
     const loginId = validar.data?.logindID
     if (!loginId) throw new Error(validar.message || 'Credenciales inválidas.')
 

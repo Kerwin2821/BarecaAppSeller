@@ -5,8 +5,9 @@ import type { UserRole } from './tipos'
  * Determinan qué entradas del menú ve cada perfil.
  */
 
+/** Solo KIOSCO y DISTRIBUIDOR venden. Oficina Regional y Bareca NO ven "Vender". */
 export function puedeVender(role: UserRole | null | undefined): boolean {
-  return !!role && ['DISTRIBUIDOR', 'EMPLEADO', 'KIOSCO'].includes(role)
+  return !!role && ['DISTRIBUIDOR', 'KIOSCO'].includes(role)
 }
 
 export function puedeGestionarEquipo(role: UserRole | null | undefined): boolean {

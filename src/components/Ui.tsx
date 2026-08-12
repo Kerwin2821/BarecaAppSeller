@@ -7,6 +7,7 @@ import {
   View,
   type StyleProp,
   type TextInputProps,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native'
 import { Spinner } from './Estados'
@@ -81,8 +82,9 @@ export function Campo({
   mono = false,
   revelable = false,
   style,
+  inputStyle,
   ...props
-}: TextInputProps & { etiqueta?: string; error?: boolean; mono?: boolean; revelable?: boolean }) {
+}: TextInputProps & { etiqueta?: string; error?: boolean; mono?: boolean; revelable?: boolean; inputStyle?: StyleProp<TextStyle> }) {
   const [oculto, setOculto] = useState(true)
   const secure = revelable ? oculto : props.secureTextEntry
   return (
@@ -99,6 +101,7 @@ export function Campo({
             mono && { fontFamily: fuenteMono, fontSize: 13 },
             error && { borderColor: color.danger },
             props.editable === false && { backgroundColor: color.bgCard, color: color.text2 },
+            inputStyle,
           ]}
         />
         {revelable ? (
@@ -201,6 +204,7 @@ const est = StyleSheet.create({
     fontSize: 13.5,
     color: color.text,
     backgroundColor: color.white,
+    fontFamily: 'Inter_400Regular',
   },
   ojo: { position: 'absolute', right: 8, padding: 6 },
   alerta: { borderWidth: 1, borderRadius: radio.md + 2, paddingVertical: 11, paddingHorizontal: 14 },

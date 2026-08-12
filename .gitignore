@@ -28,3 +28,9 @@ yarn-error.*
 
 # TypeScript
 *.tsbuildinfo
+/android
+/ios
+
+# Firebase (config del cliente, se provee local; no se versiona)
+google-services.json
+GoogleService-Info.plist

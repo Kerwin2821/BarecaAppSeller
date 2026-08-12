@@ -1,28 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-native-svg'
 import { useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
-import { comisionApi, rachasApi, userApi } from '@/lib/endpoints'
+import { authApi, comisionApi, rachasApi, userApi } from '@/lib/endpoints'
 import { desenvolver, mensajeDeError } from '@/lib/api'
 import { fetchPolizas } from '@/lib/polizas'
-import { actorUuid, etiquetaRol } from '@/lib/roles'
+import { actorUuid } from '@/lib/roles'
 import { fechaCorta, moneda } from '@/lib/formato'
 import { bancoInfo } from '@/lib/bancos'
 import type { DisplayPolicy } from '@/lib/tipos'
 import { Pantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError, EstadoVacio, Skeleton } from '@/components/Estados'
-import { Alerta, Boton, Chip, Pildora, Tarjeta } from '@/components/Ui'
+import { Alerta, Avatar, Boton, Pildora, Tarjeta } from '@/components/Ui'
 import { Modal } from '@/components/Modal'
 import { Dropdown, type OpcionDrop } from '@/components/Dropdown'
 import { BannerAseguradoras } from '@/components/BannerAseguradoras'
+import { IcoEquipo, IcoRachas, IcoReporte, IcoSoporte } from '@/components/Iconos'
 import { useToast } from '@/components/Toast'
+import { VisitaGuiada } from '@/components/VisitaGuiada'
+import { registrarPush } from '@/lib/push'
+import { marcarTourVisto, tourVisto } from '@/lib/onboarding'
 import { color } from '@/lib/tema'
 
-const NARANJA = '#F97316'
-
-// Mascota (racha en riesgo) y logos de aseguradora — empaquetados en el app.
+// Marca + mascota + logos de aseguradora — empaquetados en el app.
+// Versión blanca (fondo transparente) para integrarla sobre la tarjeta de color.
+const LOGO_BARECA_BLANCO = require('../../assets/logo-bareca-blanco.png')
 const CARA_TRISTE = require('../../assets/racha-triste.png')
+const CARA_FELIZ = require('../../assets/racha-feliz.png')
 const LOGOS_ASEG: { re: RegExp; src: number }[] = [
   { re: /caroni/i, src: require('../../assets/logos/logo-caroni-blanco.png') },
   { re: /estar/i, src: require('../../assets/logos/logo-estar-seguros.png') },
@@ -38,10 +44,35 @@ function LogoAseg({ nombre }: { nombre?: string }) {
   )
 }
 
+function iniciales(n: string): string {
+  return (
+    n
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s[0]?.toUpperCase() ?? '')
+      .join('') || '·'
+  )
+}
+
 export default function Home() {
   const router = useRouter()
   const { user } = useAuth()
   const [retiro, setRetiro] = useState(false)
+
+  // Registra el token de push (FCM) del dispositivo cuando hay sesión. En Expo Go
+  // no hace nada (requiere development build); no bloquea el resto del home.
+  useEffect(() => {
+    if (user) void registrarPush(user)
+  }, [user?.loginId])
+
+  // Visita guiada la primera vez que se entra al app.
+  const [tour, setTour] = useState(false)
+  useEffect(() => {
+    tourVisto().then((v) => {
+      if (!v) setTour(true)
+    })
+  }, [])
 
   const cargar = useCallback(async () => {
     if (!user) return null
@@ -57,13 +88,14 @@ export default function Home() {
             : user.role === 'BARECA'
               ? userApi.barecaByUuid(uuid)
               : Promise.resolve(null)
-    const [tot, res, pol, ent] = await Promise.all([
+    const [tot, res, pol, ent, foto] = await Promise.all([
       uuid ? comisionApi.totales(user.role, uuid).then((r) => desenvolver(r) as any).catch(() => null) : Promise.resolve(null),
       uuid ? rachasApi.resumen(user.role, uuid).then((r: any) => r?.data ?? null).catch(() => null) : Promise.resolve(null),
       fetchPolizas(user, 'vehicle', 0, 5).then((r) => r.items).catch(() => [] as DisplayPolicy[]),
       entidadPromesa.then((e: any) => e?.nombre ?? null).catch(() => null),
+      authApi.obtenerFoto(user.loginId).then((r: any) => r?.data?.url ?? null).catch(() => null),
     ])
-    return { tot, res, pol, nombreEnt: ent }
+    return { tot, res, pol, nombreEnt: ent, foto }
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
 
@@ -74,29 +106,35 @@ export default function Home() {
   const res = datos?.res
   const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true : null
   const polizas: DisplayPolicy[] = datos?.pol ?? []
+  const foto = datos?.foto ?? null
   const nombre = datos?.nombreEnt || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
 
   return (
     <Pantalla onRefresh={recargar}>
-      {/* Saludo + carita de meta */}
+      {/* Saludo: foto de perfil + nombre + carita de meta (toca → Rachas) */}
       <View style={est.saludoFila}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={est.saludo} numberOfLines={2}>
-            Hola, {nombre} 👋
+        <Pressable onPress={() => router.navigate('/perfil' as never)} hitSlop={6}>
+          {foto ? (
+            <Image source={{ uri: foto }} style={est.avatarFoto} />
+          ) : (
+            <Avatar texto={iniciales(nombre)} size={54} invertido />
+          )}
+        </Pressable>
+        <View style={[{ flex: 1, minWidth: 0 }, res ? { paddingRight: 96 } : null]}>
+          <Text style={est.saludo}>Hola 👋</Text>
+          <Text style={est.nombreEnt} numberOfLines={res && !cumpliendo ? 1 : 2}>
+            {nombre}
           </Text>
-          <Text style={est.rol}>{etiquetaRol(user?.role)}</Text>
+          {res && !cumpliendo && res.mensaje ? (
+            <Text style={est.rachaAlerta} numberOfLines={3}>
+              {String(res.mensaje)}
+            </Text>
+          ) : null}
         </View>
         {res ? (
-          <View style={est.metaBox}>
-            {cumpliendo ? (
-              <Text style={est.cara}>😄</Text>
-            ) : (
-              <Image source={CARA_TRISTE} resizeMode="contain" style={est.caraImg} />
-            )}
-            <Text style={[est.metaTxt, { color: cumpliendo ? color.success : color.danger }]}>
-              {cumpliendo ? 'Meta al día' : 'Meta en riesgo'}
-            </Text>
-          </View>
+          <Pressable onPress={() => router.navigate('/rachas' as never)} style={est.mascotaWrap} hitSlop={6}>
+            <Image source={cumpliendo ? CARA_FELIZ : CARA_TRISTE} resizeMode="contain" style={est.mascota} />
+          </Pressable>
         ) : null}
       </View>
 
@@ -104,47 +142,62 @@ export default function Home() {
         <EstadoError mensaje={error} onReintentar={recargar} />
       ) : (
         <>
-          {/* Wallet: comisión acumulada */}
+          {/* Tarjeta de comisión (estilo tarjeta de crédito, con el logo Bareca) */}
           {cargando && !tot ? (
-            <Skeleton w="100%" h={168} r={20} />
+            <Skeleton w="100%" h={196} r={20} />
           ) : (
-            <View style={est.wallet}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={est.walletLbl}>Comisión acumulada</Text>
-                <Text style={est.walletMoneda}>Bs.</Text>
-              </View>
-              <Text style={est.walletMonto} numberOfLines={1} adjustsFontSizeToFit>
-                {moneda(pendiente).replace('Bs. ', '')}
-              </Text>
-              <View style={est.walletSub}>
-                <View>
-                  <Text style={est.walletSubLbl}>Pagado</Text>
-                  <Text style={est.walletSubVal}>{moneda(pagada)}</Text>
+            <>
+              <Pressable style={est.cardShadow} onPress={() => router.navigate('/comisiones' as never)}>
+                <View style={est.card}>
+                  <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+                    <Defs>
+                      <SvgGradient id="gcard" x1="0" y1="0" x2="1" y2="1">
+                        <Stop offset="0" stopColor={color.primaryDark} />
+                        <Stop offset="0.5" stopColor={color.primary} />
+                        <Stop offset="1" stopColor={color.accent} />
+                      </SvgGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#gcard)" />
+                  </Svg>
+                  <View style={est.cardInner}>
+                    <View style={est.cardTop}>
+                      <Text style={est.cardLbl}>Comisión acumulada</Text>
+                      <Image source={LOGO_BARECA_BLANCO} resizeMode="contain" style={est.cardLogo} />
+                    </View>
+                    <Text style={est.cardMonto} numberOfLines={1} adjustsFontSizeToFit>
+                      {moneda(pendiente)}
+                    </Text>
+                    <View style={est.cardStats}>
+                      <View>
+                        <Text style={est.cardStatLbl}>Pagado</Text>
+                        <Text style={est.cardStatVal} numberOfLines={1} adjustsFontSizeToFit>
+                          {moneda(pagada)}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={est.cardStatLbl}>Histórico</Text>
+                        <Text style={est.cardStatVal} numberOfLines={1} adjustsFontSizeToFit>
+                          {moneda(historico)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={est.walletSubLbl}>Histórico</Text>
-                  <Text style={est.walletSubVal}>{moneda(historico)}</Text>
-                </View>
-              </View>
-              <Pressable style={est.retirarBtn} onPress={() => setRetiro(true)}>
-                <Text style={est.retirarTxt}>Retirar comisión</Text>
               </Pressable>
-            </View>
+              <Boton texto="Retirar comisión" variante="accent" onPress={() => setRetiro(true)} style={{ marginTop: 16 }} />
+            </>
           )}
 
-          {res?.mensaje ? (
-            <Text style={[est.mensajeMeta, !cumpliendo && { color: color.danger }]}>{String(res.mensaje)}</Text>
-          ) : null}
+          {/* Banner de aseguradoras (debajo de Retirar comisión) */}
+          <BannerAseguradoras />
 
           {/* Accesos rápidos */}
           <View style={est.accesos}>
-            <Acceso emoji="🧾" texto="Reporte" onPress={() => router.navigate('/reporte' as never)} />
-            <Acceso emoji="🔥" texto="Rachas" onPress={() => router.navigate('/rachas' as never)} />
-            <Acceso emoji="👥" texto="Equipo" onPress={() => router.navigate('/equipo' as never)} />
-            <Acceso emoji="💬" texto="Soporte" onPress={() => router.navigate('/soporte' as never)} />
+            <Acceso Icono={IcoReporte} texto="Reporte" onPress={() => router.navigate('/reporte' as never)} />
+            <Acceso Icono={IcoRachas} texto="Rachas" onPress={() => router.navigate('/rachas' as never)} />
+            <Acceso Icono={IcoEquipo} texto="Equipo" onPress={() => router.navigate('/equipo' as never)} />
+            <Acceso Icono={IcoSoporte} texto="Soporte" onPress={() => router.navigate('/soporte' as never)} />
           </View>
-
-          <BannerAseguradoras />
 
           {/* Últimas pólizas */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 }}>
@@ -200,14 +253,32 @@ export default function Home() {
           recargar()
         }}
       />
+
+      <VisitaGuiada
+        visible={tour}
+        onFinalizar={() => {
+          setTour(false)
+          void marcarTourVisto()
+        }}
+      />
     </Pantalla>
   )
 }
 
-function Acceso({ emoji, texto, onPress }: { emoji: string; texto: string; onPress: () => void }) {
+function Acceso({
+  Icono,
+  texto,
+  onPress,
+}: {
+  Icono: ComponentType<{ color: string; size?: number }>
+  texto: string
+  onPress: () => void
+}) {
   return (
     <Pressable style={est.acceso} onPress={onPress}>
-      <Text style={{ fontSize: 22 }}>{emoji}</Text>
+      <View style={est.accesoIcono}>
+        <Icono color={color.accent} size={20} />
+      </View>
       <Text style={est.accesoTxt}>{texto}</Text>
     </Pressable>
   )
@@ -315,35 +386,52 @@ function ModalRetiro({
 }
 
 const est = StyleSheet.create({
-  saludoFila: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  saludo: { fontSize: 20, fontWeight: '800', color: color.text, letterSpacing: -0.3 },
-  rol: { fontSize: 12.5, color: color.text2, marginTop: 2 },
-  metaBox: { alignItems: 'center' },
-  cara: { fontSize: 30 },
-  caraImg: { width: 54, height: 42 },
+  saludoFila: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4, position: 'relative' },
+  avatarFoto: { width: 54, height: 54, borderRadius: 27, backgroundColor: color.borderSoft },
+  saludo: { fontSize: 18, fontWeight: '800', color: color.text, letterSpacing: -0.2 },
+  nombreEnt: { fontSize: 12, fontWeight: '600', color: color.text3, marginTop: 2 },
+  // Beca (mascota de racha): al nivel del perfil, asomándose por detrás de la tarjeta.
+  mascotaWrap: { position: 'absolute', right: -4, top: 4 },
+  mascota: { width: 128, height: 100 },
   asegChip: { backgroundColor: '#fff', borderRadius: 5, borderWidth: 1, borderColor: color.borderSoft, paddingHorizontal: 5, paddingVertical: 2 },
   polAseg: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   polAsegTxt: { flex: 1, fontSize: 11.5, color: color.text2, fontWeight: '600' },
-  metaTxt: { fontSize: 10.5, fontWeight: '800', marginTop: 1 },
-  wallet: {
+
+  // Tarjeta de comisión (fondo degradado navy → naranja de marca)
+  // Capa de sombra aparte (la tarjeta tiene overflow:hidden y en iOS eso recorta la sombra).
+  cardShadow: {
+    marginTop: -2,
+    borderRadius: 20,
+    backgroundColor: color.primary,
+    shadowColor: color.primaryDark,
+    shadowOpacity: 0.42,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 16,
+  },
+  card: {
     backgroundColor: color.primary,
     borderRadius: 20,
-    padding: 20,
-    shadowColor: color.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    minHeight: 168,
+    overflow: 'hidden',
   },
-  walletLbl: { fontSize: 12.5, fontWeight: '700', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.3 },
-  walletMoneda: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.7)' },
-  walletMonto: { fontSize: 40, fontWeight: '900', color: '#fff', marginTop: 6, letterSpacing: -1 },
-  walletSub: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
-  walletSubLbl: { fontSize: 10.5, color: 'rgba(255,255,255,0.7)', fontWeight: '700' },
-  walletSubVal: { fontSize: 13, color: '#fff', fontWeight: '800', marginTop: 2 },
-  retirarBtn: { backgroundColor: '#fff', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 16 },
-  retirarTxt: { fontSize: 13.5, fontWeight: '800', color: color.primaryDark },
-  mensajeMeta: { fontSize: 12.5, color: color.text2, marginTop: 12, textAlign: 'center', fontWeight: '600' },
+  cardInner: { padding: 20 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardLbl: { fontSize: 12.5, fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: 0.3 },
+  cardLogo: { width: 104, height: 28 },
+  cardMonto: { fontSize: 36, fontWeight: '900', color: '#fff', marginTop: 14, letterSpacing: -0.5 },
+  cardStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+  },
+  cardStatLbl: { fontSize: 10.5, fontWeight: '700', color: 'rgba(255,255,255,0.72)' },
+  cardStatVal: { fontSize: 14, fontWeight: '800', color: '#fff', marginTop: 3 },
+
+  rachaAlerta: { fontSize: 11.5, fontWeight: '800', color: color.danger, marginTop: 20, lineHeight: 15 },
   accesos: { flexDirection: 'row', gap: 10, marginTop: 18 },
   acceso: {
     flex: 1,
@@ -353,14 +441,21 @@ const est = StyleSheet.create({
     borderColor: color.borderSoft,
     paddingVertical: 14,
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
+  },
+  accesoIcono: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(241,89,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   accesoTxt: { fontSize: 11, fontWeight: '700', color: color.text2 },
   seccion: { fontSize: 15, fontWeight: '800', color: color.text },
   verTodas: { fontSize: 12.5, fontWeight: '800', color: color.primary },
   polCard: { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
   polCliente: { fontSize: 13.5, fontWeight: '800', color: color.text },
-  polSub: { fontSize: 11.5, color: color.text2, marginTop: 2 },
   polFecha: { fontSize: 11, color: color.text4, marginTop: 3 },
   notaRetiro: { fontSize: 11, color: color.text3, lineHeight: 16 },
 })

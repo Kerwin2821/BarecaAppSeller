@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, type DimensionValue } from 'react-native'
 import { color, radio } from '../lib/tema'
+import { LoaderBareca } from './LoaderBareca'
 
 export function Spinner({ size = 'small', claro = false }: { size?: number | 'small' | 'large'; claro?: boolean }) {
   return <ActivityIndicator size={size} color={claro ? '#FFFFFF' : color.primary} />
@@ -9,7 +10,7 @@ export function Spinner({ size = 'small', claro = false }: { size?: number | 'sm
 export function CargandoBloque({ texto = 'Cargando…' }: { texto?: string }) {
   return (
     <View style={est.bloque}>
-      <Spinner />
+      <LoaderBareca size={52} />
       <Text style={est.bloqueTexto}>{texto}</Text>
     </View>
   )

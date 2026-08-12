@@ -1,55 +1,56 @@
 /**
- * Tokens de diseño del portal de vendedores Bareca (asesores.barecaonline.com).
- * Paleta derivada de los estilos reales del portal: primario #147db1 (azul Bareca),
- * acento Material #1976d2, neutros tipo Bootstrap/Tailwind.
+ * Tokens de diseño de la app Bareca. Paleta alineada a la marca (logo): azul
+ * marino (wordmark) como color primario y naranja como acento. Cambiar estos
+ * valores renueva el look de toda la app: los componentes referencian los tokens.
  */
 import { Platform } from 'react-native'
 
 export const color = {
-  primary: '#147DB1',
-  primaryDark: '#0F5F86',
-  primaryLight: '#E6F2F8',
-  primaryTint: '#F0F7FB',
+  // Marca — azul marino (primario) + naranja (acento)
+  primary: '#2A2F6B',
+  primaryDark: '#1C2150',
+  primaryLight: '#EAECF7',
+  primaryTint: '#F4F5FC',
 
-  accent: '#1976D2',
+  accent: '#F1592A',
 
-  // Neutros
-  text: '#212529',
-  text2: '#495057',
-  text3: '#6C757D',
-  text4: '#94A3B8',
+  // Neutros (fríos, con leve tinte navy para que "peguen" con la marca)
+  text: '#1A1E33',
+  text2: '#474D63',
+  text3: '#787E95',
+  text4: '#A7ACBE',
 
-  bgApp: '#F4F6F9',
-  bgCard: '#F8F9FA',
+  bgApp: '#F5F6FA',
+  bgCard: '#F6F8FC',
   white: '#FFFFFF',
 
-  border: '#DEE2E6',
-  borderSoft: '#E9ECEF',
-  borderInput: '#CED4DA',
+  border: '#E3E6F0',
+  borderSoft: '#EDEFF6',
+  borderInput: '#D3D8E6',
 
-  success: '#198754',
-  successBg: '#D1E7DD',
-  warning: '#FD7E14',
-  warningBg: '#FFF3CD',
+  success: '#12A06A',
+  successBg: '#DDF3EB',
+  warning: '#F59E0B',
+  warningBg: '#FEF3C7',
   amber: '#B26A00',
-  danger: '#DC3545',
-  dangerBg: '#F8D7DA',
-  dangerBorder: '#F5C2C7',
+  danger: '#E5484D',
+  dangerBg: '#FCE9EA',
+  dangerBorder: '#F5C7C9',
 
   // Estados de póliza
-  vigente: '#198754',
-  inactiva: '#6C757D',
-  procesado: '#147DB1',
+  vigente: '#12A06A',
+  inactiva: '#787E95',
+  procesado: '#2A2F6B',
 } as const
 
-export const radio = { sm: 6, md: 10, lg: 14, xl: 20, full: 9999 } as const
+export const radio = { sm: 8, md: 11, lg: 16, xl: 22, full: 9999 } as const
 
 export const sombra = {
   card: {
-    shadowColor: '#0B2A3B',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
+    shadowColor: '#1C2150',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
 } as const

@@ -87,6 +87,17 @@ export async function borrarCredencialLogin(): Promise<void> {
   await SecureStore.deleteItemAsync(K_CRED)
 }
 
+/**
+ * Actualiza SOLO la contraseña de la credencial biométrica guardada (si existe).
+ * Se llama tras un cambio de clave para que el ingreso con huella siga
+ * funcionando con la contraseña nueva. Si no hay credencial guardada, no hace nada.
+ */
+export async function actualizarPasswordCredencial(nuevaPassword: string): Promise<void> {
+  const cred = await leerCredencialLogin()
+  if (!cred) return
+  await guardarCredencialLogin({ ...cred, password: nuevaPassword })
+}
+
 /** ¿Hay login biométrico configurado (habilitado + credenciales guardadas)? */
 export async function loginBiometricoListo(): Promise<boolean> {
   return (await biometriaHabilitada()) && (await leerCredencialLogin()) !== null

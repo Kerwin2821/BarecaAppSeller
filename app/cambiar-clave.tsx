@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/lib/auth'
 import { authApi } from '@/lib/endpoints'
 import { mensajeDeError } from '@/lib/api'
+import { actualizarPasswordCredencial } from '@/lib/biometria'
 import { MedidorClave, fuerzaClave } from '@/components/MedidorClave'
 import { Alerta, Boton, Campo, Tarjeta } from '@/components/Ui'
 import { color } from '@/lib/tema'
@@ -47,6 +48,9 @@ export default function CambiarClave() {
         passActual: actual || undefined,
         passNueva: nueva,
       })
+      // Mantén el ingreso con huella al día: si había credencial guardada, ahora
+      // apunta a la contraseña nueva (si no, no hace nada).
+      await actualizarPasswordCredencial(nueva)
       await cerrarSesion()
       router.replace('/login')
     } catch (err) {
