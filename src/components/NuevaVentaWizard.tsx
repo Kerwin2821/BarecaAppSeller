@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -103,6 +103,11 @@ function bsDePlan(plan: any): number {
 export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const insets = useSafeAreaInsets()
   const [paso, setPaso] = useState(0)
+  const scrollRef = useRef<ScrollView>(null)
+  // Al cambiar de paso, sube al inicio (p.ej. al pasar a Datos del Cliente → OCR).
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: true })
+  }, [paso])
   const [cargando, setCargando] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
   const setCarga = (k: string, v: boolean) => setCargando((c) => ({ ...c, [k]: v }))
@@ -495,7 +500,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
         })}
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 30 }} keyboardShouldPersistTaps="handled">
         <Text style={est.titulo}>{express ? 'Venta Rápida RCV' : 'Nueva Solicitud'}</Text>
 
         {error ? (
@@ -529,7 +534,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                       </View>
                     ) : null}
                     <Text style={est.cardEmoji}>{t.emoji}</Text>
-                    <Text style={[est.cardTexto, !t.activo && { color: color.text4 }]}>{t.texto}</Text>
+                    <Text style={[est.cardTexto, sel && { color: '#fff' }, !t.activo && { color: color.text4 }]}>{t.texto}</Text>
                   </Pressable>
                 )
               })}
@@ -1399,7 +1404,7 @@ const est = StyleSheet.create({
   },
   grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   col2: { width: '47%', flexGrow: 1 },
-  cardSel: { borderColor: color.primary, borderWidth: 2, backgroundColor: color.primaryLight },
+  cardSel: { borderColor: color.primary, borderWidth: 2, backgroundColor: color.primary },
   cardOff: { opacity: 0.6 },
   cardEmoji: { fontSize: 26, marginBottom: 6 },
   cardTexto: { fontSize: 13, fontWeight: '800', color: color.text, textAlign: 'center' },

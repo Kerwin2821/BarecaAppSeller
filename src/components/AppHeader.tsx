@@ -38,7 +38,27 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
     [perfil, destinoId],
   )
   const { datos } = useApi<Notificacion[]>(cargar, [perfil, destinoId])
-  const noLeidas = (datos ?? []).filter((n) => !n.leida).length
+  // Leídas marcadas en esta sesión (además de las que ya vienen `leida` del backend).
+  const [leidas, setLeidas] = useState<Set<number>>(new Set())
+  const esLeida = (n: Notificacion) => n.leida || leidas.has(Number(n.id))
+  const noLeidas = (datos ?? []).filter((n) => !esLeida(n)).length
+
+  const marcarLeida = (n: Notificacion) => {
+    if (esLeida(n) || !user?.loginId) return
+    setLeidas((s) => new Set(s).add(Number(n.id)))
+    notifApi.markRead(user.loginId, Number(n.id)).catch(() => {})
+  }
+  const marcarTodas = () => {
+    if (!user?.loginId || !datos) return
+    const pend = datos.filter((n) => !esLeida(n))
+    if (!pend.length) return
+    setLeidas((s) => {
+      const nx = new Set(s)
+      pend.forEach((n) => nx.add(Number(n.id)))
+      return nx
+    })
+    pend.forEach((n) => notifApi.markRead(user.loginId, Number(n.id)).catch(() => {}))
+  }
 
   return (
     <View style={[est.header, { paddingTop: insets.top + 8 }]}>
@@ -67,6 +87,11 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
         <View style={[est.panel, { top: insets.top + 46 }]}>
           <View style={est.panelHead}>
             <Text style={est.panelTitulo}>Notificaciones</Text>
+            {noLeidas > 0 ? (
+              <Pressable onPress={marcarTodas} hitSlop={6}>
+                <Text style={est.marcarTodas}>Marcar todas</Text>
+              </Pressable>
+            ) : null}
           </View>
           <ScrollView style={{ maxHeight: 380 }}>
             {datos === null ? (
@@ -74,18 +99,25 @@ export function AppHeader({ titulo, onVolver }: { titulo: string; onVolver?: () 
             ) : datos.length === 0 ? (
               <EstadoVacio titulo="Sin notificaciones" detalle="No tienes avisos por ahora." />
             ) : (
-              datos.map((n) => (
-                <View key={n.id} style={[est.notif, !n.leida && est.notifNoLeida]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    {!n.leida && <View style={est.dot} />}
-                    <Text style={est.notifTitulo} numberOfLines={1}>
-                      {n.titulo}
-                    </Text>
-                  </View>
-                  <Text style={est.notifMsg}>{n.mensaje}</Text>
-                  {n.fecha ? <Text style={est.notifFecha}>{fechaRelativa(n.fecha)}</Text> : null}
-                </View>
-              ))
+              datos.map((n) => {
+                const leida = esLeida(n)
+                return (
+                  <Pressable
+                    key={n.id}
+                    onPress={() => marcarLeida(n)}
+                    style={({ pressed }) => [est.notif, !leida && est.notifNoLeida, pressed && { opacity: 0.7 }]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {!leida ? <View style={est.dot} /> : null}
+                      <Text style={[est.notifTitulo, leida && { fontWeight: '600', color: color.text2 }]} numberOfLines={1}>
+                        {n.titulo}
+                      </Text>
+                    </View>
+                    <Text style={est.notifMsg}>{n.mensaje}</Text>
+                    {n.fecha ? <Text style={est.notifFecha}>{fechaRelativa(n.fecha)}</Text> : null}
+                  </Pressable>
+                )
+              })
             )}
           </ScrollView>
         </View>
@@ -136,8 +168,16 @@ const est = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
-  panelHead: { padding: 14, borderBottomWidth: 1, borderBottomColor: color.borderSoft },
+  panelHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: color.borderSoft,
+  },
   panelTitulo: { fontSize: 14, fontWeight: '800', color: color.primary },
+  marcarTodas: { fontSize: 11.5, fontWeight: '700', color: color.primary },
   notif: { padding: 12, borderBottomWidth: 1, borderBottomColor: color.borderSoft },
   notifNoLeida: { backgroundColor: color.primaryTint },
   dot: { width: 8, height: 8, borderRadius: 99, backgroundColor: color.primary },
