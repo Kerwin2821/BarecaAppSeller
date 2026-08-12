@@ -5,7 +5,8 @@ import * as Location from 'expo-location'
 import { geoApi, validacionApi, type GeoOpcion } from '../lib/endpoints'
 import { VehiculoCatalogo, type PrefillVehiculo, type SeleccionVehiculo } from './VehiculoCatalogo'
 import { mensajeDeError } from '../lib/api'
-import { ocrCarnet, ocrCedula, type FuenteImagen } from '../lib/ocr'
+import { ocrCarnet, ocrCedula, type FuenteImagen, type ImagenElegida } from '../lib/ocr'
+import { CamaraDoc } from './CamaraDoc'
 import { fechaCorta, isoDia } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
 import { Spinner } from './Estados'
@@ -210,6 +211,7 @@ export function PasoCliente({
   // Cargas de OCR independientes: la cédula y el carnet pueden leerse a la vez.
   const [ocrCedulaCargando, setOcrCedulaCargando] = useState(false)
   const [ocrCarnetCargando, setOcrCarnetCargando] = useState(false)
+  const [camara, setCamara] = useState<null | 'cedula' | 'carnet'>(null)
   const [motorIgual, setMotorIgual] = useState(false)
 
   // "Igual a Carrocería": el serial del motor copia el de la carrocería (NIV).
@@ -218,10 +220,10 @@ export function PasoCliente({
     if (v) setD((x) => ({ ...x, serialMotor: x.serialNiv }))
   }
 
-  const capturarCedula = useCallback(async (fuente: FuenteImagen) => {
+  const capturarCedula = useCallback(async (fuente: FuenteImagen, imagenPre?: ImagenElegida | null) => {
     setOcrCedulaCargando(true)
     try {
-      const r = await ocrCedula(fuente, express)
+      const r = await ocrCedula(fuente, express, imagenPre)
       if (r) {
         setD((x) => ({
           ...x,
@@ -240,10 +242,10 @@ export function PasoCliente({
     }
   }, [avisar, express])
 
-  const capturarCarnet = useCallback(async (fuente: FuenteImagen) => {
+  const capturarCarnet = useCallback(async (fuente: FuenteImagen, imagenPre?: ImagenElegida | null) => {
     setOcrCarnetCargando(true)
     try {
-      const r = await ocrCarnet(fuente)
+      const r = await ocrCarnet(fuente, imagenPre)
       if (r) {
         setD((x) => {
           const serialNiv = r.serialNiv ?? r.serialCarroceria ?? x.serialNiv
@@ -479,6 +481,7 @@ export function PasoCliente({
           detalle="Cédula / RIF del tomador"
           cargando={ocrCedulaCargando}
           onCapturar={capturarCedula}
+          onCamara={() => setCamara('cedula')}
         />
         {mostrarVehiculo ? (
           <ZonaOCR
@@ -486,9 +489,22 @@ export function PasoCliente({
             detalle="Extrae placa, seriales y color"
             cargando={ocrCarnetCargando}
             onCapturar={capturarCarnet}
+            onCamara={() => setCamara('carnet')}
           />
         ) : null}
       </Tarjeta>
+
+      <CamaraDoc
+        visible={!!camara}
+        tipo={camara ?? 'cedula'}
+        onCerrar={() => setCamara(null)}
+        onCapturar={(foto) => {
+          const t = camara
+          setCamara(null)
+          if (t === 'cedula') void capturarCedula('camara', foto)
+          else if (t === 'carnet') void capturarCarnet('camara', foto)
+        }}
+      />
 
       <Tarjeta style={{ padding: 18, gap: 14 }}>
         <Text style={est.titulo}>Datos del Tomador</Text>
@@ -664,11 +680,13 @@ function ZonaOCR({
   detalle,
   cargando,
   onCapturar,
+  onCamara,
 }: {
   etiqueta: string
   detalle: string
   cargando: boolean
   onCapturar: (fuente: FuenteImagen) => void
+  onCamara?: () => void
 }) {
   return (
     <View style={est.zona}>
@@ -683,7 +701,7 @@ function ZonaOCR({
         </View>
       ) : (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable onPress={() => onCapturar('camara')} style={est.zonaBtn}>
+          <Pressable onPress={() => (onCamara ? onCamara() : onCapturar('camara'))} style={est.zonaBtn}>
             <Text style={est.zonaBtnTexto}>📷 Cámara</Text>
           </Pressable>
           <Pressable onPress={() => onCapturar('galeria')} style={est.zonaBtn}>

@@ -19,6 +19,7 @@ import {
 import { moneda, numero } from '../lib/formato'
 import { Dropdown, type OpcionDrop } from './Dropdown'
 import { LogoBanco } from './LogoBanco'
+import { sonidoExito } from '../lib/sonido'
 import { Spinner } from './Estados'
 import { PasoCliente, type DatosCliente } from './PasoCliente'
 import { useToast } from './Toast'
@@ -1254,6 +1255,7 @@ function PagoExito({
   const escala = useRef(new Animated.Value(0)).current
   useEffect(() => {
     Animated.spring(escala, { toValue: 1, friction: 4, tension: 90, useNativeDriver: true }).start()
+    sonidoExito() // chime + vibración de transacción exitosa
   }, [escala])
 
   const compartirCliente = async () => {

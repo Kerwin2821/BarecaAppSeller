@@ -58,7 +58,7 @@ function conTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ])
 }
 
-interface ImagenElegida {
+export interface ImagenElegida {
   uri: string
   base64?: string
   mimeType: string
@@ -121,8 +121,8 @@ const carnetIncompleto = (d: any) => !d || !d.placa || !d.marca || !d.modelo
  * Captura la cédula y extrae los datos del tomador.
  * @param express usa el OCR del flujo Express (`/ai/extract-cedula`) en vez del primario.
  */
-export async function ocrCedula(fuente: FuenteImagen, express = false): Promise<DatosCedulaOCR | null> {
-  const img = await elegir(fuente)
+export async function ocrCedula(fuente: FuenteImagen, express = false, imagenPre?: ImagenElegida | null): Promise<DatosCedulaOCR | null> {
+  const img = imagenPre ?? (await elegir(fuente))
   if (!img) return null
 
   if (express) {
@@ -152,8 +152,8 @@ export async function ocrCedula(fuente: FuenteImagen, express = false): Promise<
 }
 
 /** Captura el carnet de circulación y extrae los datos del vehículo. */
-export async function ocrCarnet(fuente: FuenteImagen): Promise<DatosCarnetOCR | null> {
-  const img = await elegir(fuente)
+export async function ocrCarnet(fuente: FuenteImagen, imagenPre?: ImagenElegida | null): Promise<DatosCarnetOCR | null> {
+  const img = imagenPre ?? (await elegir(fuente))
   if (!img) return null
 
   // 1) Primario: process-certificado.
