@@ -5,23 +5,22 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import {
   useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-  Inter_900Black,
-} from '@expo-google-fonts/inter'
+  HankenGrotesk_400Regular,
+  HankenGrotesk_500Medium,
+  HankenGrotesk_600SemiBold,
+  HankenGrotesk_700Bold,
+} from '@expo-google-fonts/hanken-grotesk'
+import { PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { onboardingVisto } from '@/lib/onboarding'
 import Bienvenida from './bienvenida'
-import { aplicarFuenteInter } from '@/lib/fuente'
+import { aplicarFuentesMarca } from '@/lib/fuente'
 import { ToastProvider } from '@/components/Toast'
 import { LoaderBareca } from '@/components/LoaderBareca'
 import { color } from '@/lib/tema'
 
-// Aplica Inter a todo el texto del app (parchea Text.render una vez).
-aplicarFuenteInter()
+// Aplica la tipografía de marca a todo el texto del app (parchea Text.render una vez).
+aplicarFuentesMarca()
 
 /** Rutas accesibles sin sesión. */
 const PUBLICAS = ['login', 'recuperar-contrasena', 'verificar', 'bienvenida']
@@ -113,12 +112,11 @@ export default function RootLayout() {
   // nativo no está en el build o falla la carga, seguimos con la tipografía del
   // sistema en vez de quedarnos congelados en el splash.
   const [fuentesListas, fuentesError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
-    Inter_900Black,
+    HankenGrotesk_400Regular,
+    HankenGrotesk_500Medium,
+    HankenGrotesk_600SemiBold,
+    HankenGrotesk_700Bold,
+    PlusJakartaSans_800ExtraBold,
   })
 
   if (!fuentesListas && !fuentesError) {

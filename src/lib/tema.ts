@@ -1,32 +1,34 @@
 /**
- * Tokens de diseño de la app Bareca. Paleta alineada a la marca (logo): azul
- * marino (wordmark) como color primario y naranja como acento. Cambiar estos
- * valores renueva el look de toda la app: los componentes referencian los tokens.
+ * Tokens de diseño de la app Bareca. Paleta y radios alineados al **Manual de Marca
+ * v2.0** (julio 2026): Azul Bareca como color institucional y Naranja Bareca como
+ * único acento/llamado a la acción (≤10 % de la superficie). Cambiar estos valores
+ * renueva el look de toda la app: los componentes referencian los tokens.
  */
 import { Platform } from 'react-native'
 
 export const color = {
-  // Marca — azul marino (primario) + naranja (acento)
-  primary: '#2A2F6B',
-  primaryDark: '#1C2150',
-  primaryLight: '#EAECF7',
-  primaryTint: '#F4F5FC',
+  // Marca — Azul Bareca (primario) + Naranja Bareca (acento). Valores del manual.
+  primary: '#15205C', // Azul Bareca — fondos, titulares, base institucional
+  primaryDark: '#0E1640', // Azul profundo
+  primaryLight: '#EAEEFB', // Azul suave
+  primaryTint: '#F4F6FB', // Fondo (tinte claro)
 
-  accent: '#F1592A',
+  accent: '#F95428', // Naranja Bareca — botones, acentos, enlaces y CTA
+  accentDark: '#E8451C', // Naranja hover / pressed
 
-  // Neutros (fríos, con leve tinte navy para que "peguen" con la marca)
-  text: '#1A1E33',
-  text2: '#474D63',
-  text3: '#787E95',
-  text4: '#A7ACBE',
+  // Neutros del manual
+  text: '#15205C', // titulares / texto principal (Azul Bareca)
+  text2: '#5C6588', // Texto secundario
+  text3: '#717896', // Texto terciario
+  text4: '#9AA1B9', // texto tenue / placeholders (derivado, más claro que el terciario)
 
-  bgApp: '#F5F6FA',
-  bgCard: '#F6F8FC',
+  bgApp: '#F4F6FB', // Fondo
+  bgCard: '#FFFFFF',
   white: '#FFFFFF',
 
-  border: '#E3E6F0',
-  borderSoft: '#EDEFF6',
-  borderInput: '#D3D8E6',
+  border: '#E4E7F1', // Borde
+  borderSoft: '#E7EAF6', // Icono / borde suave
+  borderInput: '#D6DBEA', // borde de campos (derivado del borde)
 
   success: '#12A06A',
   successBg: '#DDF3EB',
@@ -39,19 +41,22 @@ export const color = {
 
   // Estados de póliza
   vigente: '#12A06A',
-  inactiva: '#787E95',
-  procesado: '#2A2F6B',
+  inactiva: '#717896',
+  procesado: '#15205C',
 } as const
 
-export const radio = { sm: 8, md: 11, lg: 16, xl: 22, full: 9999 } as const
+// Radios del manual: botones/campos 12 · tarjetas 20.
+export const radio = { sm: 8, md: 12, lg: 16, xl: 20, full: 9999 } as const
 
+// Sombra de tarjeta ≈ manual (0 18px 36px -20px rgba(21,32,92,.22)); RN no tiene
+// spread, así que se aproxima con un desenfoque suave del mismo azul.
 export const sombra = {
   card: {
-    shadowColor: '#1C2150',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
+    shadowColor: '#15205C',
+    shadowOpacity: 0.13,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 3,
   },
 } as const
 

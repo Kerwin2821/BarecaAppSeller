@@ -204,7 +204,7 @@ const est = StyleSheet.create({
     fontSize: 13.5,
     color: color.text,
     backgroundColor: color.white,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'HankenGrotesk_400Regular',
   },
   ojo: { position: 'absolute', right: 8, padding: 6 },
   alerta: { borderWidth: 1, borderRadius: radio.md + 2, paddingVertical: 11, paddingHorizontal: 14 },
