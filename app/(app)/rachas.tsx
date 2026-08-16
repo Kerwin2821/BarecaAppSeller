@@ -1,12 +1,13 @@
-import { useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { rachasApi } from '@/lib/endpoints'
 import { fetchPolizas } from '@/lib/polizas'
 import type { DisplayPolicy } from '@/lib/tipos'
 import { actorUuid, puedeVender } from '@/lib/roles'
+import { vendioHoyLocal } from '@/lib/ventaLocal'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { EstadoError, Skeleton } from '@/components/Estados'
 import { Boton, Tarjeta } from '@/components/Ui'
@@ -31,7 +32,10 @@ interface DatosRachas {
 /** ¿La fecha (ISO/date) cae hoy, en hora local del dispositivo? */
 function esHoy(fecha?: string | null): boolean {
   if (!fecha) return false
-  const d = new Date(fecha)
+  const s = String(fecha).trim()
+  // "YYYY-MM-DD" sin hora → medianoche LOCAL (evita el corrimiento de día en zonas < 0).
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s
+  const d = new Date(iso)
   if (isNaN(d.getTime())) return false
   const h = new Date()
   return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate()
@@ -56,6 +60,22 @@ export default function Rachas() {
 
   const { datos, cargando, error, recargar } = useApi<DatosRachas | null>(cargar, [user?.loginId])
 
+  // Flag local "vendí hoy" + recarga al enfocar (igual que el home), para que Beca
+  // concuerde y esté feliz al instante tras emitir una venta.
+  const [ventaLocalHoy, setVentaLocalHoy] = useState(false)
+  const yaMonto = useRef(false)
+  useFocusEffect(
+    useCallback(() => {
+      vendioHoyLocal(user?.loginId).then(setVentaLocalHoy)
+      if (!yaMonto.current) {
+        yaMonto.current = true
+        return
+      }
+      recargar()
+    }, [user?.loginId, recargar]),
+  )
+  const vendioHoy = !!datos?.vendioHoy || ventaLocalHoy
+
   const resumen = datos?.resumen
   const retos: any[] = Array.isArray(datos?.retos) ? datos!.retos : ((datos?.retos as any)?.items ?? [])
   const completados = retos.filter((r) => r?.completado).length
@@ -70,8 +90,8 @@ export default function Rachas() {
         <SkeletonRachas />
       ) : (
         <View style={{ gap: 14 }}>
-          {resumen ? <Hero r={resumen} vendioHoy={!!datos?.vendioHoy} /> : null}
-          {resumen ? <GuiaRacha r={resumen} vendioHoy={!!datos?.vendioHoy} /> : null}
+          {resumen ? <Hero r={resumen} vendioHoy={vendioHoy} /> : null}
+          {resumen ? <GuiaRacha r={resumen} vendioHoy={vendioHoy} /> : null}
 
           {completados > 0 ? (
             <View style={est.banner}>

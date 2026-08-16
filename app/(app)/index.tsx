@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-native-svg'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
 import { authApi, comisionApi, rachasApi, userApi } from '@/lib/endpoints'
@@ -22,6 +22,7 @@ import { useToast } from '@/components/Toast'
 import { ObjetivoTour, useObjetivoTour, useTour } from '@/lib/tour'
 import { registrarPush } from '@/lib/push'
 import { tourVisto } from '@/lib/onboarding'
+import { vendioHoyLocal } from '@/lib/ventaLocal'
 import { color } from '@/lib/tema'
 
 // Marca + mascota + logos de aseguradora — empaquetados en el app.
@@ -33,7 +34,11 @@ const CARA_FELIZ = require('../../assets/racha-feliz.png')
 /** ¿La fecha (ISO/date) cae hoy, en hora local del dispositivo? */
 function esHoy(fecha?: string | null): boolean {
   if (!fecha) return false
-  const d = new Date(fecha)
+  const s = String(fecha).trim()
+  // "YYYY-MM-DD" sin hora → interpretarla como medianoche LOCAL (evita el corrimiento
+  // de día que provoca `new Date('YYYY-MM-DD')` al tratarla como UTC en zonas < 0).
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s
+  const d = new Date(iso)
   if (isNaN(d.getTime())) return false
   const h = new Date()
   return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate()
@@ -106,15 +111,32 @@ export default function Home() {
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
 
+  // Flag local "vendí hoy" + recarga al enfocar el home (p.ej. al volver de emitir una
+  // venta): así Beca se pone feliz al instante y los datos (comisión, pólizas) se
+  // refrescan sin tener que salir y volver a entrar al app.
+  const [ventaLocalHoy, setVentaLocalHoy] = useState(false)
+  const yaMonto = useRef(false)
+  useFocusEffect(
+    useCallback(() => {
+      vendioHoyLocal(user?.loginId).then(setVentaLocalHoy)
+      if (!yaMonto.current) {
+        yaMonto.current = true // el montaje ya dispara la carga vía useApi
+        return
+      }
+      recargar()
+    }, [user?.loginId, recargar]),
+  )
+
   const tot = datos?.tot
   const pendiente = tot?.totalPendiente ?? tot?.pendiente ?? tot?.montoPendiente ?? 0
   const pagada = tot?.totalPagada ?? tot?.pagado ?? 0
   const historico = tot?.totalHistorico ?? tot?.total ?? 0
   const res = datos?.res
   const polizas: DisplayPolicy[] = datos?.pol ?? []
-  // La app detecta una venta de HOY (aunque el backend aún no la cuente) -> Beca feliz.
+  // Beca feliz si: el backend lo dice, hay una póliza de HOY en la lista, o el flag
+  // LOCAL "vendí hoy" está puesto (se marca al emitir, sin depender del backend/zona horaria).
   const vendioHoy = polizas.some((p) => esHoy(p.saleDate))
-  const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true || vendioHoy : null
+  const cumpliendo = res ? res.estado === 'feliz' || res.hoyVendio === true || vendioHoy || ventaLocalHoy : null
   const foto = datos?.foto ?? null
   const nombre = datos?.nombreEnt || `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email || 'Vendedor'
 

@@ -28,6 +28,7 @@ import {
 } from './endpoints'
 import { mensajeDeError } from './api'
 import { escucharPagoMovil } from './socketPago'
+import { marcarVentaHoy } from './ventaLocal'
 import { actorUuid } from './roles'
 import type { DatosCliente } from '../components/PasoCliente'
 
@@ -532,6 +533,9 @@ export function useEmisionPago() {
 
   /** Finaliza la póliza (crea cuadro + carnet) tras confirmar el pago. */
   const finalizar = useCallback(async (sd: SaleDataVenta, bank: DetallesBanco, gateway: string, paymentReference: string) => {
+    // El pago ya se confirmó: registra localmente que se vendió hoy (Beca feliz al
+    // instante, sin esperar a que el backend cuente la venta).
+    void marcarVentaHoy(sd.user?.loginId)
     if (sd.tipo === 'funerario') {
       const r = await funerarioApi.finalizarPoliza({
         numeroOrden: orden.current.numeroOrden,
