@@ -214,6 +214,9 @@ export function PasoCliente({
   // Cargas de OCR independientes: la cédula y el carnet pueden leerse a la vez.
   const [ocrCedulaCargando, setOcrCedulaCargando] = useState(false)
   const [ocrCarnetCargando, setOcrCarnetCargando] = useState(false)
+  // Contacto adelantado: al iniciar un OCR aparecen correo/teléfono debajo (y se
+  // quedan) para que el vendedor los escriba mientras el documento se procesa.
+  const [contactoTemprano, setContactoTemprano] = useState(false)
   const [camara, setCamara] = useState<null | 'cedula' | 'carnet'>(null)
   const [motorIgual, setMotorIgual] = useState(false)
 
@@ -241,6 +244,7 @@ export function PasoCliente({
 
   const capturarCedula = useCallback(async (fuente: FuenteImagen, imagenPre?: ImagenElegida | null) => {
     setOcrCedulaCargando(true)
+    setContactoTemprano(true)
     try {
       const r = await ocrCedula(fuente, express, imagenPre)
       if (r) {
@@ -263,6 +267,7 @@ export function PasoCliente({
 
   const capturarCarnet = useCallback(async (fuente: FuenteImagen, imagenPre?: ImagenElegida | null) => {
     setOcrCarnetCargando(true)
+    setContactoTemprano(true)
     try {
       const r = await ocrCarnet(fuente, imagenPre)
       if (r) {
@@ -512,6 +517,39 @@ export function PasoCliente({
             onCapturar={capturarCarnet}
             onCamara={() => setCamara('carnet')}
           />
+        ) : null}
+        {ocrCedulaCargando || ocrCarnetCargando || contactoTemprano ? (
+          // Contacto adelantado: se escribe AQUÍ mientras el OCR procesa (mismo estado
+          // que "Datos de Contacto", así lo escrito baja al formulario automáticamente).
+          <View style={{ borderTopWidth: 1, borderTopColor: color.borderSoft, paddingTop: 12, gap: 10 }}>
+            <Text style={est.hint}>
+              ⚡ Mientras se procesa el documento, adelanta el contacto del cliente:
+            </Text>
+            <View>
+              <Campo
+                etiqueta="Correo electrónico"
+                placeholder="cliente@correo.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={d.correo}
+                error={correoChk === 'existe'}
+                onChangeText={(t) => set('correo', t.trim())}
+              />
+              <EstadoChk estado={correoChk} mensajeExiste="Este correo ya está registrado en el sistema." />
+            </View>
+            <View>
+              <Campo
+                etiqueta="Teléfono"
+                placeholder="04141234567"
+                keyboardType="phone-pad"
+                value={d.telefono}
+                error={telefonoChk === 'existe'}
+                onChangeText={(t) => set('telefono', t.replace(/[^0-9]/g, ''))}
+              />
+              <EstadoChk estado={telefonoChk} mensajeExiste="Este teléfono ya está registrado en el sistema." />
+            </View>
+          </View>
         ) : null}
       </Tarjeta>
 
