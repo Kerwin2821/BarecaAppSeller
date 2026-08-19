@@ -133,16 +133,130 @@ export const userApi = {
   datosPagosByActor: (tipoActor: string, uuid: string) =>
     bff<ApiResponse<any[]>>('/users/datos-pagos/v1/datos-pagos/by-actor', { params: { tipoActor, uuid } }),
 
-  /** Registra un método de retiro (Pago Móvil) para recibir comisiones. */
-  crearDatosPago: (body: {
-    numeroDocumento: string
-    telefono: string
-    alias: string
-    banco: string
-    oficinasRegionalesId?: string | null
-    distribuidoresId?: string | null
-    kioscosPuestosId?: string | null
-  }) => bff<ApiResponse<any>>('/users/datos-pagos/v1/datos-pagos', { method: 'POST', body }),
+  /**
+   * Registra un método de retiro. `tipoMetodo`:
+   *   PAGO_MOVIL     → banco + teléfono + documento del titular.
+   *   TRANSFERENCIA  → además cuenta de 20 dígitos (debe empezar por el código del
+   *                    banco), tipo de cuenta y nombre del titular.
+   */
+  crearDatosPago: (body: DatosPagoBody) =>
+    bff<ApiResponse<any>>('/users/datos-pagos/v1/datos-pagos', { method: 'POST', body }),
+
+  /** Edita un método de retiro existente (mismo payload que el alta). */
+  actualizarDatosPago: (datosPagosId: string, body: DatosPagoBody) =>
+    bff<ApiResponse<any>>(`/users/datos-pagos/v1/datos-pagos/${encodeURIComponent(datosPagosId)}`, {
+      method: 'PUT',
+      body,
+    }),
+}
+
+/** Payload de un método de cobro (pago móvil o cuenta bancaria). */
+export interface DatosPagoBody {
+  numeroDocumento: string
+  telefono: string
+  alias: string
+  banco: string
+  tipoMetodo?: 'PAGO_MOVIL' | 'TRANSFERENCIA'
+  numeroCuenta?: string | null
+  tipoCuenta?: 'CORRIENTE' | 'AHORRO' | null
+  titular?: string | null
+  oficinasRegionalesId?: string | null
+  distribuidoresId?: string | null
+  kioscosPuestosId?: string | null
+}
+
+// ── Billetera (wallet de comisiones) ────────────────────────
+// Ledger en :3301 (USERS) vía BFF. Reemplaza el manejo anterior de comisiones:
+// las comisiones se acreditan al saldo, y desde ahí se retira o se paga una póliza.
+export type TipoMovWallet =
+  | 'CREDITO_COMISION'
+  | 'DEBITO_RETIRO'
+  | 'DEBITO_PAGO_POLIZA'
+  | 'AJUSTE_CREDITO'
+  | 'AJUSTE_DEBITO'
+  | 'REVERSO'
+
+export type EstadoMovWallet = 'CONFIRMADO' | 'EN_PROCESO' | 'FALLIDO' | 'EN_REVISION'
+
+export interface Wallet {
+  walletId: string
+  tipoActor: string
+  actorUuid: string
+  saldo: number
+  activo: boolean
+}
+
+export interface WalletMovimiento {
+  movimientoId: string
+  tipo: TipoMovWallet
+  monto: number
+  saldoDespues: number
+  estado: EstadoMovWallet
+  comisionItemId: number | null
+  numeroPoliza: string | null
+  numeroOrden: string | null
+  referenciaBancaria: string | null
+  datosPagosId: string | null
+  fecha: string
+  observaciones: string | null
+}
+
+export interface RetiroWalletResp {
+  movimientoId: string
+  estado: EstadoMovWallet
+  referenciaBancaria: string | null
+  saldoDespues: number
+  message?: string
+}
+
+export const walletApi = {
+  /** Saldo actual de la billetera del actor. */
+  miWallet: (tipo: string, uuid: string) =>
+    bff<Wallet>('/users/wallets/v1/mi-wallet', { params: { tipo, uuid } }),
+
+  /** Movimientos (ledger) paginados, con filtros opcionales de fecha y tipo. */
+  movimientos: (
+    tipo: string,
+    uuid: string,
+    filtros: { desde?: string; hasta?: string; tipoMov?: TipoMovWallet | ''; page?: number; size?: number } = {},
+  ) =>
+    bff<any>('/users/wallets/v1/movimientos', {
+      params: {
+        tipo,
+        uuid,
+        page: filtros.page ?? 0,
+        size: filtros.size ?? 20,
+        ...(filtros.desde ? { desde: filtros.desde } : {}),
+        ...(filtros.hasta ? { hasta: filtros.hasta } : {}),
+        ...(filtros.tipoMov ? { tipoMov: filtros.tipoMov } : {}),
+      },
+    }),
+
+  /** Solicita un retiro del saldo hacia un método de cobro registrado. */
+  retiro: (tipo: string, uuid: string, body: { monto: number; datosPagosId: string }) =>
+    bff<RetiroWalletResp>('/users/wallets/v1/retiros', { method: 'POST', body, params: { tipo, uuid } }),
+}
+
+/** Etiqueta legible de cada tipo de movimiento. */
+export const LABEL_MOV_WALLET: Record<TipoMovWallet, string> = {
+  CREDITO_COMISION: 'Comisión de venta',
+  DEBITO_RETIRO: 'Retiro de saldo',
+  DEBITO_PAGO_POLIZA: 'Pago de póliza',
+  AJUSTE_CREDITO: 'Ajuste a favor',
+  AJUSTE_DEBITO: 'Ajuste en contra',
+  REVERSO: 'Reverso',
+}
+
+export const LABEL_ESTADO_WALLET: Record<EstadoMovWallet, string> = {
+  CONFIRMADO: 'Confirmado',
+  EN_PROCESO: 'En proceso',
+  FALLIDO: 'Fallido',
+  EN_REVISION: 'En revisión',
+}
+
+/** ¿El movimiento suma al saldo? (para el signo y el color en la UI). */
+export function esCreditoWallet(tipo: TipoMovWallet): boolean {
+  return tipo === 'CREDITO_COMISION' || tipo === 'AJUSTE_CREDITO' || tipo === 'REVERSO'
 }
 
 // ── Pólizas (Mis Ventas) ────────────────────────────────────
@@ -356,7 +470,11 @@ export interface GatewayPago {
  */
 export const paymentApi = {
   /** Config de la pasarela (gateways activos + pago móvil habilitado). */
-  config: () => bff<ApiResponse<{ gateways: GatewayPago[]; pagoMovilHabilitado: boolean }>>('/payments/config', { sinCierre: true }),
+  config: () =>
+    bff<ApiResponse<{ gateways: GatewayPago[]; pagoMovilHabilitado: boolean; walletHabilitado?: boolean }>>(
+      '/payments/config',
+      { sinCierre: true },
+    ),
   /** Tasa de cambio: convierte `monto` de `from` a `to` (p. ej. 1 EUR → VES). */
   convertirMoneda: (monto: number, from: string, to: string) =>
     bff<ApiResponse<number>>(`/policies/orden-seguros/v1/convertir-monedas/${monto}/${from}/${to}`, { sinCierre: true }),

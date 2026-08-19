@@ -23,6 +23,7 @@ import {
   funerarioApi,
   paymentApi,
   vehiculoRegApi,
+  walletApi,
   type Banco,
   type GatewayPago,
 } from './endpoints'
@@ -53,7 +54,7 @@ export type OtpState =
   | 'pollingFailed'
   | 'awaitingPayment'
 
-export type MetodoPago = 'DEBITO' | 'PAGO_MOVIL'
+export type MetodoPago = 'DEBITO' | 'PAGO_MOVIL' | 'WALLET'
 
 export interface DetallesBanco {
   banco: string
@@ -290,6 +291,9 @@ export function useEmisionPago() {
   const [bancos, setBancos] = useState<Banco[]>([])
   const [gateways, setGateways] = useState<GatewayPago[]>([])
   const [pagoMovilHabilitado, setPagoMovilHabilitado] = useState(false)
+  // Billetera: habilitada por la config del portal + saldo actual del vendedor.
+  const [walletHabilitado, setWalletHabilitado] = useState(false)
+  const [walletSaldo, setWalletSaldo] = useState(0)
   const [calculatedTotal, setCalculatedTotal] = useState<number | null>(null)
   const [maxDiscount, setMaxDiscount] = useState(0)
   const [ratesLoadError, setRatesLoadError] = useState(false)
@@ -356,6 +360,18 @@ export function useEmisionPago() {
       setBancos(bancosR?.data ?? [])
       setGateways(cfg?.data?.gateways ?? [])
       setPagoMovilHabilitado(!!cfg?.data?.pagoMovilHabilitado)
+
+      // Billetera: solo si el portal la habilita. El saldo se consulta aparte para
+      // decidir si el método puede ofrecerse (debe cubrir el total).
+      const walletOn = cfg?.data?.walletHabilitado === true
+      setWalletHabilitado(walletOn)
+      if (walletOn) {
+        const uuid = actorUuid(sd.user) ?? ''
+        if (uuid) {
+          const w = await walletApi.miWallet(sd.user?.role, uuid).catch(() => null)
+          setWalletSaldo(Number((w as any)?.saldo ?? (w as any)?.data?.saldo ?? 0) || 0)
+        }
+      }
 
       // Total con comisión (prepagada) o descuento máximo.
       const t = calcularTotales(sd, { VES: 1, EUR: rEUR, USD: rUSD })
@@ -777,6 +793,43 @@ export function useEmisionPago() {
         }
         orden.current.montoPlaza = String(MONTO_REAL ? round2(totalPagar) : 1)
 
+        // 4-bis. BILLETERA: la orden se crea con `pagoConWallet`; el core debita el
+        // saldo del vendedor (sin OTP) y devuelve en `data` la referencia del
+        // movimiento. Con esa referencia se emite la póliza de una vez.
+        if (opts.metodo === 'WALLET') {
+          if (sd.tipo === 'funerario') {
+            throw new Error('El pago con billetera aún no está disponible para el producto funerario.')
+          }
+          const totalCobrar = MONTO_REAL ? round2(totalPagar) : 1
+          if (walletSaldo < totalCobrar) {
+            throw new Error('El saldo de tu billetera no cubre el total de esta póliza.')
+          }
+          const body: any = construirOrdenRcv(sd, opts.bank, opts.gateway, totalPagar, discountPct)
+          body.pagoConWallet = true
+          let respW: any
+          try {
+            respW = await paymentApi.crearOrden(body)
+          } catch (e) {
+            throw new Error(`al pagar con la billetera — ${mensajeDeError(e)}`)
+          }
+          const referencia = respW?.data
+          if (!referencia || typeof referencia !== 'string' || referencia.length < 8) {
+            throw new Error(respW?.message || 'La billetera no pudo procesar el pago.')
+          }
+          const idsW = extraerNumeroOrden(respW)
+          orden.current.numeroOrden = idsW.numeroOrden
+          orden.current.orderUuid = idsW.uuid
+          setOtpState('verifying')
+          await finalizar(sd, opts.bank, opts.gateway, referencia)
+          // Refresca el saldo mostrado tras el débito.
+          const uuidW = actorUuid(sd.user) ?? ''
+          if (uuidW) {
+            const w = await walletApi.miWallet(sd.user?.role, uuidW).catch(() => null)
+            if (w) setWalletSaldo(Number((w as any)?.saldo ?? (w as any)?.data?.saldo ?? 0) || 0)
+          }
+          return
+        }
+
         // 4. Crear la orden (según tipo y método).
         let resp: any
         try {
@@ -806,7 +859,7 @@ export function useEmisionPago() {
         setOtpError(mensajeDeError(e))
       }
     },
-    [rates, calculatedTotal, stagear, pollPagoMovil],
+    [rates, calculatedTotal, stagear, pollPagoMovil, finalizar, walletSaldo],
   )
 
   /** Paso 2 (débito): envía el OTP, sondea y finaliza. */
@@ -905,6 +958,8 @@ export function useEmisionPago() {
     bancos,
     gateways,
     pagoMovilHabilitado,
+    walletHabilitado,
+    walletSaldo,
     calculatedTotal,
     maxDiscount,
     cargandoInicial,

@@ -391,7 +391,9 @@ function TabPagos() {
                       {info.nombre}
                     </Text>
                     <Text style={est.pagoLinea} numberOfLines={1}>
-                      {[p?.telefono, p?.numeroDocumento].filter(Boolean).join(' · ')}
+                      {p?.numeroCuenta
+                        ? `Cuenta ••••${String(p.numeroCuenta).slice(-4)} · ${p?.tipoCuenta === 'AHORRO' ? 'Ahorro' : 'Corriente'}`
+                        : [p?.telefono, p?.numeroDocumento].filter(Boolean).join(' · ')}
                     </Text>
                   </View>
                   <Text style={est.verDet}>›</Text>
@@ -430,7 +432,15 @@ function ModalDetallePago({ metodo, onCerrar }: { metodo: any | null; onCerrar: 
           <Tarjeta style={{ padding: 16 }}>
             {metodo?.alias ? <Dato etiqueta="Alias" valor={metodo.alias} /> : null}
             <Dato etiqueta="Banco" valor={info.nombre} />
-            <Dato etiqueta="Teléfono (Pago Móvil)" valor={metodo?.telefono} />
+            {metodo?.numeroCuenta ? (
+              <>
+                <Dato etiqueta="Número de cuenta" valor={metodo.numeroCuenta} />
+                <Dato etiqueta="Tipo de cuenta" valor={metodo?.tipoCuenta === 'AHORRO' ? 'Ahorro' : 'Corriente'} />
+                {metodo?.titular ? <Dato etiqueta="Titular" valor={metodo.titular} /> : null}
+              </>
+            ) : (
+              <Dato etiqueta="Teléfono (Pago Móvil)" valor={metodo?.telefono} />
+            )}
             <Dato etiqueta="Documento" valor={metodo?.numeroDocumento} />
           </Tarjeta>
           <View style={{ marginTop: 16 }}>
@@ -522,11 +532,19 @@ function ModalAgregarPago({
   const [documento, setDocumento] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Tipo de método: pago móvil (teléfono) o cuenta bancaria (20 dígitos).
+  const [tipoMetodo, setTipoMetodo] = useState<'PAGO_MOVIL' | 'TRANSFERENCIA'>('PAGO_MOVIL')
+  const [numeroCuenta, setNumeroCuenta] = useState('')
+  const [tipoCuenta, setTipoCuenta] = useState<'CORRIENTE' | 'AHORRO'>('CORRIENTE')
+  const [titular, setTitular] = useState('')
 
   useEffect(() => {
     if (!abierto) return
     setError(null)
     setAlias('')
+    setNumeroCuenta('')
+    setTitular('')
+    setTipoMetodo('PAGO_MOVIL')
     paymentApi
       .bancos()
       .then((r) => {
@@ -568,6 +586,22 @@ function ModalAgregarPago({
       setError('No se encontró tu documento para asociar la cuenta.')
       return
     }
+    // Cuenta bancaria: 20 dígitos que deben empezar por el código del banco (regla del portal).
+    if (tipoMetodo === 'TRANSFERENCIA') {
+      const cta = numeroCuenta.replace(/\D/g, '')
+      if (!/^\d{20}$/.test(cta)) {
+        setError('El número de cuenta debe tener exactamente 20 dígitos.')
+        return
+      }
+      if (!cta.startsWith(banco)) {
+        setError(`La cuenta debe comenzar con el código del banco (${banco}).`)
+        return
+      }
+      if (titular.trim().length < 3) {
+        setError('Indica el nombre del titular de la cuenta.')
+        return
+      }
+    }
     setEnviando(true)
     setError(null)
     try {
@@ -576,6 +610,10 @@ function ModalAgregarPago({
         telefono: telefono.trim(),
         alias: alias.trim(),
         banco,
+        tipoMetodo,
+        numeroCuenta: tipoMetodo === 'TRANSFERENCIA' ? numeroCuenta.replace(/\D/g, '') : null,
+        tipoCuenta: tipoMetodo === 'TRANSFERENCIA' ? tipoCuenta : null,
+        titular: tipoMetodo === 'TRANSFERENCIA' ? titular.trim() : null,
         oficinasRegionalesId: null,
         distribuidoresId: null,
         kioscosPuestosId: null,
@@ -593,10 +631,57 @@ function ModalAgregarPago({
   }
 
   return (
-    <Modal abierto={abierto} onCerrar={onCerrar} titulo="Nuevo método de retiro" subtitulo="Cuenta de Pago Móvil para tus comisiones">
+    <Modal
+      abierto={abierto}
+      onCerrar={onCerrar}
+      titulo="Nuevo método de retiro"
+      subtitulo="Dónde quieres recibir tus comisiones"
+    >
       <View style={{ gap: 14 }}>
+        {/* Tipo de método: pago móvil o cuenta bancaria (como el portal web) */}
+        <View style={{ gap: 8 }}>
+          <Text style={est.ayuda}>Tipo de método</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {([['PAGO_MOVIL', '📲 Pago Móvil'], ['TRANSFERENCIA', '🏦 Cuenta bancaria']] as const).map(([v, t]) => {
+              const on = tipoMetodo === v
+              return (
+                <Pressable key={v} onPress={() => setTipoMetodo(v)} style={[est.tipoBtn, on && est.tipoBtnOn]}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? '#fff' : color.text2 }}>{t}</Text>
+                </Pressable>
+              )
+            })}
+          </View>
+        </View>
+
         <SelectorBanco bancos={bancos} valor={banco} onCambiar={setBanco} />
         <Campo etiqueta="Alias" placeholder="Ej: PrincipalBDV" value={alias} onChangeText={setAlias} autoCapitalize="none" />
+
+        {tipoMetodo === 'TRANSFERENCIA' ? (
+          <>
+            <Campo
+              etiqueta="Número de cuenta (20 dígitos)"
+              placeholder="01020000000000000000"
+              keyboardType="number-pad"
+              value={numeroCuenta}
+              onChangeText={(t) => setNumeroCuenta(t.replace(/\D/g, '').slice(0, 20))}
+            />
+            <View style={{ gap: 8 }}>
+              <Text style={est.ayuda}>Tipo de cuenta</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {([['CORRIENTE', 'Corriente'], ['AHORRO', 'Ahorro']] as const).map(([v, t]) => {
+                  const on = tipoCuenta === v
+                  return (
+                    <Pressable key={v} onPress={() => setTipoCuenta(v)} style={[est.tipoBtn, on && est.tipoBtnOn]}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? '#fff' : color.text2 }}>{t}</Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+            <Campo etiqueta="Titular de la cuenta" placeholder="Nombre y apellido" value={titular} onChangeText={setTitular} />
+          </>
+        ) : null}
+
         <Campo etiqueta="Teléfono" placeholder="04141234567" keyboardType="phone-pad" value={telefono} onChangeText={setTelefono} />
         <Campo etiqueta="Documento (RIF / Cédula)" value={documento} editable={false} />
         {error ? <Alerta tipo="error">{error}</Alerta> : null}
@@ -662,6 +747,17 @@ const est = StyleSheet.create({
   rol: { fontSize: 12, color: color.text2, marginTop: 2 },
   tab: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 99, borderWidth: 1, borderColor: color.borderSoft, backgroundColor: color.white },
   tabActivo: { backgroundColor: color.primaryLight, borderColor: color.primaryLight },
+  tipoBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: color.border,
+    backgroundColor: color.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipoBtnOn: { backgroundColor: color.primary, borderColor: color.primary },
   dato: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: color.borderSoft, gap: 12 },
   datoEtiqueta: { fontSize: 12, color: color.text3 },
   datoValor: { fontSize: 12.5, fontWeight: '600', color: color.text, flexShrink: 1, textAlign: 'right' },

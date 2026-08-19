@@ -524,15 +524,20 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
     const st = pago.otpState
     if (st === 'verified') return 2
     if (metodoPago === 'PAGO_MOVIL') return st === 'awaitingPayment' || st === 'pollingFailed' ? 1 : 0
+    // Billetera: del formulario pasa directo a "procesando" (débito + emisión).
+    if (metodoPago === 'WALLET') return st === 'idle' ? 0 : 1
     return st === 'idle' || st === 'sending' ? 0 : 1
   })()
   const bancosOpc: OpcionDrop[] = pago.bancos.length
     ? pago.bancos.map((b) => ({ valor: b.codigo, texto: `${b.codigo} — ${b.nombre}` }))
     : BANCOS
   const pagoDatosInvalidos =
-    metodoPago === 'PAGO_MOVIL'
-      ? telefonoPago.length < 7 || !confirmaTelefono
-      : !bancoPago || cedulaTitular.length < 6 || telefonoPago.length < 7
+    metodoPago === 'WALLET'
+      ? // Billetera: sin formulario bancario; solo exige que el saldo cubra el total.
+        pago.walletSaldo < (MONTO_REAL ? totalPagarMostrar : 1)
+      : metodoPago === 'PAGO_MOVIL'
+        ? telefonoPago.length < 7 || !confirmaTelefono
+        : !bancoPago || cedulaTitular.length < 6 || telefonoPago.length < 7
   const pagoMax = pago.otpState === 'awaitingPayment' ? PM_ESPERA_S : DEBITO_ESPERA_S
   const pagoPct = Math.max(0, Math.min(100, ((pagoMax - pago.countdown) / pagoMax) * 100))
 
@@ -1086,19 +1091,45 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                   ) : null}
                 </Tarjeta>
 
-                {/* Método de pago (Pago Móvil solo si el BFF lo habilita) */}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {([['DEBITO', '🏦 Débito Inmediato'] as const, ...(pago.pagoMovilHabilitado ? [['PAGO_MOVIL', '📲 Pago Móvil'] as const] : [])]).map(
-                    ([m, t]) => (
-                      <Pressable key={m} onPress={() => setMetodoPago(m)} style={[est.metodoBtn, metodoPago === m && est.metodoBtnOn]}>
-                        <Text style={{ fontSize: 12.5, fontWeight: '800', color: metodoPago === m ? '#fff' : color.text2 }}>{t}</Text>
-                      </Pressable>
-                    ),
-                  )}
+                {/* Método de pago (Pago Móvil y Billetera solo si el BFF los habilita) */}
+                <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                  {([
+                    ['DEBITO', '🏦 Débito Inmediato'] as const,
+                    ...(pago.pagoMovilHabilitado ? [['PAGO_MOVIL', '📲 Pago Móvil'] as const] : []),
+                    // La billetera solo se ofrece en RCV (igual que el portal web).
+                    ...(pago.walletHabilitado && !esFunerario ? [['WALLET', '💰 Billetera'] as const] : []),
+                  ]).map(([m, t]) => (
+                    <Pressable key={m} onPress={() => setMetodoPago(m)} style={[est.metodoBtn, metodoPago === m && est.metodoBtnOn]}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: metodoPago === m ? '#fff' : color.text2 }}>{t}</Text>
+                    </Pressable>
+                  ))}
                 </View>
 
                 <Tarjeta style={{ padding: 18, gap: 14 }}>
-                  {metodoPago === 'PAGO_MOVIL' ? (
+                  {metodoPago === 'WALLET' ? (
+                    <>
+                      <Text style={est.metodoTitulo}>Pagar con mi Billetera</Text>
+                      <Text style={est.hint}>
+                        El total se debita de tu saldo de comisiones al instante. No requiere clave del banco.
+                      </Text>
+                      <View style={est.walletBox}>
+                        <Text style={est.walletLbl}>Saldo disponible</Text>
+                        <Text style={est.walletSaldo} numberOfLines={1} adjustsFontSizeToFit>
+                          {moneda(pago.walletSaldo, 'Bs.')}
+                        </Text>
+                      </View>
+                      {pago.walletSaldo < (MONTO_REAL ? totalPagarMostrar : 1) ? (
+                        <Alerta tipo="error">
+                          Tu saldo no cubre el total de esta póliza. Elige otro método de pago.
+                        </Alerta>
+                      ) : (
+                        <Alerta tipo="exito">
+                          Saldo suficiente. Al confirmar se debita {moneda(MONTO_REAL ? totalPagarMostrar : 1, 'Bs.')} y se
+                          emite la póliza.
+                        </Alerta>
+                      )}
+                    </>
+                  ) : metodoPago === 'PAGO_MOVIL' ? (
                     <>
                       <Text style={est.metodoTitulo}>Datos para el Pago Móvil</Text>
                       <Text style={est.hint}>Indícanos desde dónde realizarás el pago móvil para poder identificarlo.</Text>
@@ -1190,9 +1221,11 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     texto={
                       pago.otpState === 'sending'
                         ? 'Procesando…'
-                        : metodoPago === 'PAGO_MOVIL'
-                          ? 'Confirmar y Ver Datos de Pago'
-                          : 'Solicitar Clave Dinámica (OTP)'
+                        : metodoPago === 'WALLET'
+                          ? 'Pagar con mi Billetera y Emitir'
+                          : metodoPago === 'PAGO_MOVIL'
+                            ? 'Confirmar y Ver Datos de Pago'
+                            : 'Solicitar Clave Dinámica (OTP)'
                     }
                     variante="exito"
                     onPress={enviarPago}
@@ -1565,6 +1598,17 @@ const est = StyleSheet.create({
     backgroundColor: color.white,
   },
   metodoBtnOn: { backgroundColor: color.primary, borderColor: color.primary },
+  walletBox: {
+    backgroundColor: color.primaryTint,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: color.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 2,
+  },
+  walletLbl: { fontSize: 11.5, fontWeight: '700', color: color.text3, letterSpacing: 0.3 },
+  walletSaldo: { fontSize: 24, fontWeight: '900', color: color.primary, letterSpacing: -0.5 },
   adTitulo: { fontSize: 13.5, fontWeight: '800', color: color.text },
   apovBox: { marginTop: 12, borderWidth: 1, borderColor: color.borderSoft, borderRadius: 10, overflow: 'hidden' },
   apovFila: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, paddingHorizontal: 12 },

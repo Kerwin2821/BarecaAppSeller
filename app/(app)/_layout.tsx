@@ -31,6 +31,7 @@ export default function AppLayout() {
             <Stack.Screen name="index" options={{ title: 'Inicio' }} />
             <Stack.Screen name="polizas/index" options={{ title: 'Mis Ventas' }} />
             <Stack.Screen name="polizas/[id]" options={{ title: 'Detalle de Póliza' }} />
+            <Stack.Screen name="billetera" options={{ title: 'Mi Billetera' }} />
             <Stack.Screen name="comisiones" options={{ title: 'Mis Comisiones' }} />
             <Stack.Screen name="reporte" options={{ title: 'Reporte de Pólizas' }} />
             <Stack.Screen name="rachas" options={{ title: 'Mis Rachas' }} />

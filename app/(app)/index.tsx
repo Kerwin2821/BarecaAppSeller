@@ -4,7 +4,7 @@ import Svg, { Defs, LinearGradient as SvgGradient, Rect, Stop } from 'react-nati
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useAuth } from '@/lib/auth'
 import { useApi } from '@/hooks/useApi'
-import { authApi, comisionApi, rachasApi, userApi } from '@/lib/endpoints'
+import { authApi, comisionApi, rachasApi, userApi, walletApi } from '@/lib/endpoints'
 import { desenvolver, mensajeDeError } from '@/lib/api'
 import { fetchPolizas } from '@/lib/polizas'
 import { actorUuid } from '@/lib/roles'
@@ -100,14 +100,16 @@ export default function Home() {
             : user.role === 'BARECA'
               ? userApi.barecaByUuid(uuid)
               : Promise.resolve(null)
-    const [tot, res, pol, ent, foto] = await Promise.all([
+    const [tot, res, pol, ent, foto, wal] = await Promise.all([
       uuid ? comisionApi.totales(user.role, uuid).then((r) => desenvolver(r) as any).catch(() => null) : Promise.resolve(null),
       uuid ? rachasApi.resumen(user.role, uuid).then((r: any) => r?.data ?? null).catch(() => null) : Promise.resolve(null),
       fetchPolizas(user, 'vehicle', 0, 5).then((r) => r.items).catch(() => [] as DisplayPolicy[]),
       entidadPromesa.then((e: any) => e?.nombre ?? null).catch(() => null),
       authApi.obtenerFoto(user.loginId).then((r: any) => r?.data?.url ?? null).catch(() => null),
+      // Saldo de la billetera: es el dinero realmente disponible del vendedor.
+      uuid ? walletApi.miWallet(user.role, uuid).catch(() => null) : Promise.resolve(null),
     ])
-    return { tot, res, pol, nombreEnt: ent, foto }
+    return { tot, res, pol, nombreEnt: ent, foto, wallet: wal }
   }, [user])
   const { datos, cargando, error, recargar } = useApi(cargar, [user?.loginId])
 
@@ -128,7 +130,12 @@ export default function Home() {
   )
 
   const tot = datos?.tot
-  const pendiente = tot?.totalPendiente ?? tot?.pendiente ?? tot?.montoPendiente ?? 0
+  // La billetera es la fuente del saldo disponible; si aún no responde, se usa el
+  // pendiente de comisiones como respaldo (compatibilidad con el esquema anterior).
+  const w: any = datos?.wallet
+  const saldoWallet: number | null =
+    w == null ? null : Number(w?.saldo ?? w?.data?.saldo ?? 0) || 0
+  const pendiente = saldoWallet ?? tot?.totalPendiente ?? tot?.pendiente ?? tot?.montoPendiente ?? 0
   const pagada = tot?.totalPagada ?? tot?.pagado ?? 0
   const historico = tot?.totalHistorico ?? tot?.total ?? 0
   const res = datos?.res
@@ -212,7 +219,7 @@ export default function Home() {
             </>
           ) : (
             <>
-              <Pressable ref={refComision} collapsable={false} style={est.cardShadow} onPress={() => router.navigate('/comisiones' as never)}>
+              <Pressable ref={refComision} collapsable={false} style={est.cardShadow} onPress={() => router.navigate('/billetera' as never)}>
                 <View style={est.card}>
                   <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
                     <Defs>
@@ -226,7 +233,7 @@ export default function Home() {
                   </Svg>
                   <View style={est.cardInner}>
                     <View style={est.cardTop}>
-                      <Text style={est.cardLbl}>Comisión acumulada</Text>
+                      <Text style={est.cardLbl}>{saldoWallet != null ? 'Saldo en billetera' : 'Comisión acumulada'}</Text>
                       <Image source={LOGO_BARECA_BLANCO} resizeMode="contain" style={est.cardLogo} />
                     </View>
                     <Text style={est.cardMonto} numberOfLines={1} adjustsFontSizeToFit>

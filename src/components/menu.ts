@@ -18,6 +18,7 @@ import {
   IcoRachas,
   IcoSoporte,
   IcoVenta,
+  IcoWallet,
 } from './Iconos'
 
 export interface ItemMenu {
@@ -56,9 +57,17 @@ export const MENU: ItemMenu[] = [
     grupo: 'Operación',
   },
   {
+    ruta: '/billetera',
+    titulo: 'Mi Billetera',
+    subtitulo: 'Saldo, movimientos y retiros',
+    Icono: IcoWallet,
+    visible: puedeVerPolizas,
+    grupo: 'Operación',
+  },
+  {
     ruta: '/comisiones',
     titulo: 'Mis Comisiones',
-    subtitulo: 'Generadas y pagadas',
+    subtitulo: 'Detalle por póliza',
     Icono: IcoComisiones,
     visible: puedeVerPolizas,
     grupo: 'Operación',
