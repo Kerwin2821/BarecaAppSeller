@@ -120,7 +120,12 @@ async function reverseGeo(
   // 1) Nominatim (OpenStreetMap)
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&addressdetails=1&accept-language=es`
-    const r = await fetch(url, { headers: { 'User-Agent': 'BarecaVendedores/1.0 (app)', 'Accept-Language': 'es' } })
+    const ctrl = new AbortController()
+    const corte = setTimeout(() => ctrl.abort(), 8000)
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'BarecaVendedores/1.0 (app)', 'Accept-Language': 'es' },
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(corte))
     if (r.ok) {
       const j: any = await r.json()
       const a = j?.address ?? {}
@@ -413,20 +418,45 @@ export function PasoCliente({
   // silencio: se dispara sola al llegar a la pantalla. El único diálogo posible
   // es el permiso del sistema operativo (obligatorio), y solo la primera vez.
   const [ubicando, setUbicando] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
   const ubicadoRef = useRef(false)
-  const ubicarPorGps = useCallback(async () => {
+  const ubicarPorGps = useCallback(async (): Promise<boolean> => {
     setUbicando(true)
+    setGeoError(null)
     try {
       // Si ya está concedido, NO vuelve a pedir permiso; si no, lo pide una vez.
       let perm = await Location.getForegroundPermissionsAsync()
       if (perm.status !== 'granted' && perm.canAskAgain) {
         perm = await Location.requestForegroundPermissionsAsync()
       }
-      if (perm.status !== 'granted') return // sin permiso → se elige a mano, sin molestar
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      if (perm.status !== 'granted') {
+        setGeoError('Sin permiso de ubicación. Selecciona el estado a mano o actívalo en Ajustes.')
+        return false
+      }
+      // Posición: primero la ÚLTIMA CONOCIDA (instantánea) y, si no hay, la actual
+      // con límite de tiempo. `getCurrentPositionAsync` puede no resolver nunca con
+      // el GPS frío o bajo techo, y dejaba el autocompletado colgado en silencio.
+      let pos = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 }).catch(() => null)
+      if (!pos) {
+        pos = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), 12000)),
+        ])
+      }
+      if (!pos) {
+        setGeoError('No pudimos obtener tu ubicación (GPS sin señal). Selecciona el estado a mano.')
+        return false
+      }
       const { estado: nEstado, municipioCands, ciudadCands } = await reverseGeo(pos.coords.latitude, pos.coords.longitude)
       const est = matchGeo(estados, nEstado)
-      if (!est) return
+      if (!est) {
+        setGeoError(
+          nEstado
+            ? `Detectamos "${nEstado}" pero no coincide con el listado. Selecciona el estado a mano.`
+            : 'No pudimos detectar tu estado. Selecciónalo a mano.',
+        )
+        return false
+      }
       set('estadoId', est.id)
       set('municipioId', null)
       set('ciudadId', null)
@@ -441,8 +471,10 @@ export function PasoCliente({
       const ciu = primerMatch(ciuds, [...ciudadCands, ...municipioCands])
       if (mun) set('municipioId', mun.id)
       if (ciu) set('ciudadId', ciu.id)
+      return true
     } catch {
-      /* silencioso: la dirección se puede elegir a mano */
+      setGeoError('No pudimos detectar tu ubicación. Selecciona el estado a mano.')
+      return false
     } finally {
       setUbicando(false)
     }
@@ -453,7 +485,11 @@ export function PasoCliente({
   useEffect(() => {
     if (ubicadoRef.current || estados.length === 0 || d.estadoId) return
     ubicadoRef.current = true
-    void ubicarPorGps()
+    // Si el intento automático falla (GPS frío, sin señal), se libera la marca para
+    // poder reintentar —el vendedor también tiene el botón «Usar mi ubicación»—.
+    void ubicarPorGps().then((ok) => {
+      if (!ok) ubicadoRef.current = false
+    })
   }, [estados, d.estadoId, ubicarPorGps])
 
   const listo =
@@ -697,9 +733,19 @@ export function PasoCliente({
 
       <Tarjeta style={{ padding: 18, gap: 14 }} onLayout={(e) => { posY.current.direccion = e.nativeEvent.layout.y }}>
         <Text style={est.titulo}>Dirección del Asegurado</Text>
-        <Text style={est.hint}>
-          {ubicando ? '📍 Detectando tu ubicación…' : 'Estado, municipio y ciudad se completan por GPS; puedes corregirlos.'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={[est.hint, { flex: 1 }]}>
+            {ubicando ? '📍 Detectando tu ubicación…' : 'Estado, municipio y ciudad se completan por GPS; puedes corregirlos.'}
+          </Text>
+          {/* Reintento manual: si el GPS falló (sin señal, permiso denegado), el
+              vendedor puede volver a intentarlo sin salir de la pantalla. */}
+          {!ubicando && !d.estadoId ? (
+            <Pressable onPress={() => void ubicarPorGps()} hitSlop={6} style={est.gpsBtn}>
+              <Text style={est.gpsBtnTxt}>📍 Usar mi ubicación</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {geoError && !d.estadoId ? <Alerta tipo="info">{geoError}</Alerta> : null}
         <Dropdown etiqueta="Estado" placeholder="Selecciona un estado" opciones={aOpc(estados)} valor={d.estadoId ? String(d.estadoId) : null} onCambiar={elegirEstado} cargando={cargando.estados} />
         <Dropdown etiqueta="Municipio" placeholder="Selecciona un municipio" opciones={aOpc(municipios)} valor={d.municipioId ? String(d.municipioId) : null} onCambiar={(v) => set('municipioId', Number(v))} cargando={cargando.mun} deshabilitado={!d.estadoId} />
         <Dropdown etiqueta="Ciudad" placeholder="Selecciona una ciudad" opciones={aOpc(ciudades)} valor={d.ciudadId ? String(d.ciudadId) : null} onCambiar={(v) => set('ciudadId', Number(v))} cargando={cargando.ciu} deshabilitado={!d.estadoId} />
@@ -781,6 +827,15 @@ function EstadoChk({ estado, mensajeExiste }: { estado: Chk; mensajeExiste: stri
 }
 
 const est = StyleSheet.create({
+  gpsBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: color.accent,
+    backgroundColor: color.white,
+  },
+  gpsBtnTxt: { fontSize: 11.5, fontWeight: '800', color: color.accent },
   titulo: { fontSize: 15, fontWeight: '800', color: color.text },
   hint: { fontSize: 12, color: color.text3, lineHeight: 16 },
   label: { fontSize: 12, fontWeight: '700', color: color.text2, marginBottom: 6 },
