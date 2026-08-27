@@ -49,6 +49,15 @@ read -r -p "Escribe PRODUCCION para continuar: " ok
 # ── 5. Compilar con NODE_ENV=production (obligatorio para que cargue .env.production)
 export NODE_ENV=production
 LOG="/tmp/bareca-build-prod.log"
+
+# Gradle NO considera los .env como entrada de la tarea del bundle: si no cambió
+# ningún archivo fuente la marca UP-TO-DATE y reutiliza el bundle anterior (con la
+# configuración de QA dentro). Hay que invalidarla a mano o el APK sale mal.
+echo "Invalidando el bundle JS anterior…"
+rm -rf android/app/build/generated/assets/createBundleReleaseJsAndAssets
+rm -rf android/app/build/intermediates/assets/release
+rm -rf android/app/build/intermediates/merged_assets/release
+
 echo "Compilando… (log: $LOG)"
 ./android/gradlew -p android assembleRelease --console=plain > "$LOG" 2>&1
 
