@@ -179,3 +179,35 @@ export function IcoAtras({ color, size = 24 }: P) {
     </Svg>
   )
 }
+
+/** Cruz médica (A Tu Alcance · medicina prepagada). */
+export function IcoSalud({ color, size = 22 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3.5l7.5 3v5.2c0 4.4-3.1 7.6-7.5 8.8-4.4-1.2-7.5-4.4-7.5-8.8V6.5l7.5-3z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <Path d="M12 8.5v6M9 11.5h6" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+/** Calendario con check (cobranza de cuotas). */
+export function IcoCobranza({ color, size = 22 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x={3.5} y={5} width={17} height={15} rx={2.5} stroke={color} strokeWidth={sw} />
+      <Path d="M3.5 9.5h17M8 3v4M16 3v4" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <Path d="M9 14.5l2 2 4-4" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  )
+}
+
+/** Lupa sobre vehículo (inspección pericial). */
+export function IcoInspeccion({ color, size = 22 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={10.5} cy={10.5} r={6} stroke={color} strokeWidth={sw} />
+      <Path d="M15 15l5 5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <Path d="M7.5 11.5l1.2-2.5h3.6l1.2 2.5" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+    </Svg>
+  )
+}

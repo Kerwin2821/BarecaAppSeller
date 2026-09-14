@@ -675,3 +675,343 @@ export const publicApi = {
 
 export { desenvolver }
 export type { CurrentUser }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A TU ALCANCE — medicina prepagada (Latina Salud). Réplica del contrato del
+// portal web (core/services/atualcance-api.service.ts). Las reglas de negocio
+// (elegibilidad, recargo, rechazo, precio) las decide el backend al cotizar:
+// el app solo captura y muestra.
+//   /policies/atualcance/*  → reenvía a :4000 (datos)
+//   /atualcance/*           → lo atiende el BFF (PDFs, subida de recaudos)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface AtaPlan {
+  id: string
+  codigo: string
+  nombre: string
+  hospitalizacionCirugiaUsd: number
+  medicamentosAgudasUsd: number
+  serviciosApsAnio: number
+  activo: boolean
+}
+export interface AtaPatologia {
+  id: number
+  patologia: string
+  tipo: 'EXCLUYENTE' | 'FLEXIBILIZADA'
+  recargoPct: number
+  esperaMeses: number
+  preguntaNumero: number
+}
+export interface AtaCatalogo {
+  planes: AtaPlan[]
+  excluyentes: AtaPatologia[]
+  flexibilizadas: AtaPatologia[]
+  cuestionario?: { id: string; version: string; textoDeclaracion: string }
+  config: {
+    firmaModo: string
+    recargoFlexibilizadaPct: number
+    mesesEsperaFlexibilizada: number
+    semanasContrato: number
+    semanasParaSuspension: number
+    semanasSuspendidoParaAnular: number
+  }
+}
+export interface AtaClinica {
+  id: string
+  proveedor: string
+  estado: string
+  zona: string
+  telefono: string
+  provisional: boolean
+}
+export interface AtaSolicitudAfiliado {
+  parentesco: string
+  fechaNacimiento: string
+  sexo: string
+  maternidad: boolean
+  patologiasDeclaradas: string[]
+  alturaCm: number | null
+  pesoKg: number | null
+}
+export interface AtaLineaCotizacion {
+  parentesco: string
+  edad: number
+  tarifaId: string | null
+  cuotaBaseAnualUsd: number
+  recargoPct: number
+  recargoAnualUsd: number
+  maternidad: boolean
+  maternidadAnualUsd: number
+  totalAnualUsd: number
+  totalSemanalUsd: number
+  resultadoSuscripcion: string
+  motivo: string | null
+  elegible: boolean
+}
+export type AtaFrecuencia = 'SEMANAL' | 'QUINCENAL' | 'MENSUAL' | 'TRIMESTRAL'
+export interface AtaOpcionFrecuencia {
+  codigo: AtaFrecuencia
+  etiqueta: string
+  cobros: number
+  cuotaUsd: number
+}
+export interface AtaCotizacion {
+  planId: string
+  vigenciaDesde: string
+  lineas: AtaLineaCotizacion[]
+  totalAnualUsd: number
+  totalSemanalUsd: number
+  semanas: number
+  frecuencias: AtaOpcionFrecuencia[]
+  avisos: string[]
+}
+export interface AtaDatosPersona {
+  tipoPersona?: string
+  tipoDocumento?: string
+  numeroDocumento: string
+  nombres?: string
+  apellidos?: string
+  razonSocial?: string
+  rif?: string
+  fechaNacimiento?: string
+  sexo?: string
+  telefono?: string
+  correo?: string
+  direccion?: string
+  estado?: string
+  ciudad?: string
+  estadoCivil?: string
+}
+export interface AtaAfiliadoEmision {
+  parentesco: string
+  persona: AtaDatosPersona
+  maternidad: boolean
+  patologiasDeclaradas: string[]
+  respuestasJson: string
+  aceptoDeclaracion: boolean
+  firmaTipo: string
+  firmaUrl: string
+  alturaCm: number | null
+  pesoKg: number | null
+}
+export interface AtaDocumentoCargado {
+  tipo: string
+  documentoAfiliado?: string
+  urlS3: string
+  nombreArchivo?: string
+}
+export interface AtaSolicitudEmision {
+  planId: string
+  vigenciaDesde?: string
+  modalidadCobro: string
+  frecuenciaPago: AtaFrecuencia
+  contratante: AtaDatosPersona
+  afiliados: AtaAfiliadoEmision[]
+  barecaId?: string | null
+  oficinaRegionalId?: string | null
+  distribuidorId?: string | null
+  kioscoId?: string | null
+  clienteEmail?: string
+  clienteTelefono?: string
+  usuarioVendedor?: string
+  documentos: AtaDocumentoCargado[]
+  observaciones?: string
+}
+export interface AtaResultadoEmision {
+  contratoId: string
+  numeroContrato: string
+  vigenciaDesde: string
+  vigenciaHasta: string
+  afiliadosIncorporados: number
+  totalCuotaUsd: number
+  totalAnualUsd: number
+  cuotasGeneradas: number
+  escenarioComision: string
+  noIncorporados: { parentesco: string; documento: string; resultado: string; motivo: string }[]
+  avisos: string[]
+}
+export interface AtaPersonaGuardada {
+  nombres?: string
+  apellidos?: string
+  razonSocial?: string
+  tipoDocumento?: string
+  numeroDocumento?: string
+}
+export interface AtaCuota {
+  id: string
+  numero: number
+  fechaVencimiento: string
+  montoUsd: number
+  montoBs?: number | null
+  tasaBcv?: number | null
+  estado: string
+  metodoPago?: string | null
+  referencia?: string | null
+  urlRecibo?: string | null
+}
+export interface AtaDetalleContrato {
+  contrato: {
+    numeroContrato: string
+    estado: string
+    modalidadCobro: string
+    vigenciaDesde: string
+    vigenciaHasta: string
+    totalCuotaUsd: number
+    frecuenciaPago: string
+    totalAnualUsd: number
+    urlContratoPdf?: string | null
+    urlAnexoPdf?: string | null
+    clienteTelefono?: string | null
+    clienteEmail?: string | null
+    observaciones?: string | null
+  }
+  plan: { nombre: string } | null
+  contratante: AtaPersonaGuardada | null
+  titular: AtaPersonaGuardada | null
+  afiliados: {
+    afiliado: { id: string; parentesco: string; edadIngreso?: number; cuotaSemanalUsd?: number; recargoPct?: number; maternidad?: boolean }
+    persona: AtaPersonaGuardada | null
+  }[]
+  cuotas: AtaCuota[]
+  documentos: { tipo: string; urlS3: string; nombreArchivo?: string; documentoAfiliado?: string }[]
+  ultimoDebito?: { banco?: string | null; telefono?: string | null; cedula?: string | null; pasarela?: 'R4' | 'PLAZA' | null; numeroCuota?: number | null } | null
+}
+export interface AtaEnlacePago {
+  token: string
+  url: string
+  expiraEn: string
+  montoUsd: number
+  montoBs: number
+  tasaBcv: number
+}
+export interface AtaLineaCartera {
+  numeroContrato: string
+  titular: string | null
+  documentoTitular: string | null
+  telefono: string | null
+  estado: string
+  modalidadCobro: string
+  vigenciaDesde: string
+  totalCuotaUsd: number
+  frecuenciaPago: string
+  cuotasPagadas: number
+  cuotasVencidas: number
+  cuotasPendientes: number
+  deudaUsd: number
+  proximaCuota: number | null
+  proximoVencimiento: string | null
+  proximoMontoUsd: number | null
+}
+export interface AtaResultadoPago {
+  numeroContrato: string
+  cuotaNumero: number
+  montoUsd: number
+  montoBs: number
+  tasaBcv: number
+  estadoContrato: string
+  rehabilitado: boolean
+  comisionesGeneradas: number
+  cuotasPendientes: number
+}
+
+export const atualcanceApi = {
+  catalogo: () => bff<AtaCatalogo>('/policies/atualcance/catalogo'),
+  clinicas: (estado?: string) => bff<AtaClinica[]>('/policies/atualcance/clinicas', { params: estado ? { estado } : {} }),
+  cotizar: (planId: string, vigenciaDesde: string, afiliados: AtaSolicitudAfiliado[]) =>
+    bff<AtaCotizacion>('/policies/atualcance/cotizar', { method: 'POST', body: { planId, vigenciaDesde, afiliados } }),
+  emitir: (solicitud: AtaSolicitudEmision) =>
+    bff<AtaResultadoEmision>('/policies/atualcance/contratos', { method: 'POST', body: solicitud }),
+  consultar: (numeroContrato: string) =>
+    bff<AtaDetalleContrato>(`/policies/atualcance/contratos/${encodeURIComponent(numeroContrato)}`),
+  cartera: (tipoActor: string, actorUuid: string, estado?: string) =>
+    bff<AtaLineaCartera[]>('/policies/atualcance/cartera', { params: { tipoActor, actorUuid, ...(estado ? { estado } : {}) } }),
+  tasaBcv: () => bff<{ tasaBcv: number }>('/policies/atualcance/tasa'),
+  /** Sube un recaudo (cédula, RIF, firma) y devuelve su URL en S3. El BFF tiene las credenciales del bucket. */
+  subirDocumento: (tipo: string, form: FormData) => {
+    form.append('tipo', tipo)
+    return bff<{ url: string; nombreArchivo: string }>('/atualcance/expediente', { method: 'POST', body: form })
+  },
+  /** Cotización en PDF (la arma el BFF). */
+  generarCotizacion: (cotizacion: unknown) =>
+    bff<{ url: string; codigo: string; fecha: string }>('/atualcance/cotizacion', { method: 'POST', body: { cotizacion } }),
+  /** URL del folleto comercial (red de clínicas + cómo pedir atención). */
+  urlFolleto: () => `${(process.env.EXPO_PUBLIC_BFF_URL ?? '').replace(/\/$/, '')}/api/atualcance/folleto`,
+
+  // ── Cobranza ──
+  registrarPago: (
+    numeroContrato: string,
+    pago: { numeroCuota: number; metodoPago: string; referencia: string | null; fechaTransferencia?: string | null; registradaPor: string },
+  ) => bff<AtaResultadoPago>(`/policies/atualcance/contratos/${encodeURIComponent(numeroContrato)}/pagos`, { method: 'POST', body: pago }),
+  pagarCuotaConBilletera: (numeroContrato: string, numeroCuota: number, tipoActor: string, actorUuid: string) =>
+    bff<AtaResultadoPago>(
+      `/policies/atualcance/contratos/${encodeURIComponent(numeroContrato)}/cuotas/${numeroCuota}/pagar-con-billetera`,
+      { method: 'POST', body: { tipoActor, actorUuid } },
+    ),
+  enviarEnlacePago: (numeroContrato: string, numeroCuota: number, avisar = true) =>
+    bff<AtaEnlacePago>(`/policies/atualcance/contratos/${encodeURIComponent(numeroContrato)}/enlace-pago`, {
+      method: 'POST',
+      body: { numeroCuota, avisar },
+    }),
+
+  // ── Cobro bancario contra el enlace (mismo circuito que la página pública del cliente) ──
+  solicitarOtp: (token: string, datos: { banco: string; telefono: string; cedula: string; monto: string; isBancoPlaza?: boolean }) =>
+    bff<{ success?: boolean; error?: boolean; data?: string; message?: string }>(
+      `/policies/atualcance/pago-link/${encodeURIComponent(token)}/solicitar-otp`,
+      { method: 'POST', body: datos },
+    ),
+  esperarPagoMovil: (token: string, telefono: string) =>
+    bff<{ success?: boolean; error?: boolean; message?: string }>(
+      `/policies/atualcance/pago-link/${encodeURIComponent(token)}/esperar-pago-movil`,
+      { method: 'POST', body: { telefono } },
+    ),
+  estadoEnlace: (token: string) =>
+    bff<{ estado: string; montoBs: number; montoUsd: number; tasaUsd: number }>(
+      `/policies/atualcance/pago-link/${encodeURIComponent(token)}`,
+    ),
+  confirmarPagoEnlace: (token: string, datos: { paymentReference: string; paymentOperationId?: string; metodoPago: string }) =>
+    bff<{ success: boolean; cuotaPagada?: number; montoBs?: number; message?: string }>(
+      `/policies/atualcance/pago-link/${encodeURIComponent(token)}/confirmar`,
+      { method: 'POST', body: datos },
+    ),
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASCO — inspecciones periciales (la inspección la hace la app del perito;
+// aquí el vendedor las consulta y ve el veredicto).
+// ═══════════════════════════════════════════════════════════════════════════
+export interface Inspeccion {
+  id: string
+  fecha: string | null
+  /** PENDIENTE | ANALIZANDO | APROBADA | APROBADA_CON_ANEXO | RECHAZADA | INCOMPLETA */
+  estado: string | null
+  /** ASEGURABLE | ASEGURABLE_CON_EXCLUSIONES | NO_ASEGURABLE | INCOMPLETA */
+  veredicto: string | null
+  severidadMax: string | null
+  /** Token del QR para la app móvil del perito. */
+  token?: string | null
+  placaDeclarada?: string | null
+  vehiculoDescripcion?: string | null
+  clienteNombre?: string | null
+  clienteCedula?: string | null
+  ventaSnapshot?: string | null
+  marca: string | null
+  modelo: string | null
+  placa: string | null
+  serialMotor: string | null
+  tableroEncendido: boolean | null
+  odometro: string | null
+  resumenSeveridad: string | null
+  anexoUrl: string | null
+  frontalUrl: string | null
+  izquierdoUrl: string | null
+  derechoUrl: string | null
+  posteriorUrl: string | null
+  serialMotorUrl: string | null
+  tableroUrl: string | null
+}
+export const cascoInspeccionApi = {
+  pendientes: (tipo: string, uuid: string) =>
+    bff<Inspeccion[]>('/policies/casco/inspeccion/pendientes', { params: { tipo, uuid }, headers: { 'Cache-Control': 'no-cache' } }),
+  detalle: (id: string) =>
+    bff<Inspeccion>(`/policies/casco/inspeccion/${encodeURIComponent(id)}`, { headers: { 'Cache-Control': 'no-cache' } }),
+}

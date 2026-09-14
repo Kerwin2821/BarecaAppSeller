@@ -38,6 +38,9 @@ export default function AppLayout() {
             <Stack.Screen name="equipo" options={{ title: 'Gestión de Equipo' }} />
             <Stack.Screen name="perfil" options={{ title: 'Mi Perfil' }} />
             <Stack.Screen name="nueva-venta" options={{ title: 'Nueva Venta' }} />
+            <Stack.Screen name="atualcance/index" options={{ title: 'A Tu Alcance' }} />
+            <Stack.Screen name="atualcance/cartera" options={{ title: 'Cobranza A Tu Alcance' }} />
+            <Stack.Screen name="inspecciones" options={{ title: 'Inspecciones' }} />
             <Stack.Screen name="mapa-conexiones" options={{ title: 'Mapa de Conexiones' }} />
             <Stack.Screen name="soporte" options={{ title: 'Soporte' }} />
             <Stack.Screen name="chat/index" options={{ title: 'Chat' }} />

@@ -64,6 +64,19 @@ export interface ImagenElegida {
   mimeType: string
 }
 
+/** Abre cámara o galería y devuelve la imagen (con base64). Exportado para flujos que
+ *  necesitan la misma foto para dos cosas (p. ej. leerla con OCR y subirla al expediente). */
+export async function elegirImagen(fuente: FuenteImagen): Promise<ImagenElegida | null> {
+  return elegir(fuente)
+}
+
+/** FormData con la imagen como archivo, para subirla al BFF. */
+export function imagenComoArchivo(img: ImagenElegida, nombre: string, campo = 'file'): FormData {
+  const form = new FormData()
+  form.append(campo, { uri: img.uri, name: nombre, type: img.mimeType } as any)
+  return form
+}
+
 async function elegir(fuente: FuenteImagen): Promise<ImagenElegida | null> {
   if (fuente === 'camara') {
     const perm = await ImagePicker.requestCameraPermissionsAsync()

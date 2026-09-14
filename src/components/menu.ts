@@ -19,6 +19,9 @@ import {
   IcoSoporte,
   IcoVenta,
   IcoWallet,
+  IcoSalud,
+  IcoCobranza,
+  IcoInspeccion,
 } from './Iconos'
 
 export interface ItemMenu {
@@ -45,6 +48,30 @@ export const MENU: ItemMenu[] = [
     titulo: 'Nueva Venta',
     subtitulo: 'Cotizar y emitir RCV y Funerario',
     Icono: IcoVenta,
+    visible: puedeVender,
+    grupo: 'Operación',
+  },
+  {
+    ruta: '/atualcance',
+    titulo: 'A Tu Alcance',
+    subtitulo: 'Medicina prepagada · Latina Salud',
+    Icono: IcoSalud,
+    visible: puedeVender,
+    grupo: 'Operación',
+  },
+  {
+    ruta: '/atualcance/cartera',
+    titulo: 'Cobranza A Tu Alcance',
+    subtitulo: 'Contratos y cuotas',
+    Icono: IcoCobranza,
+    visible: puedeVender,
+    grupo: 'Operación',
+  },
+  {
+    ruta: '/inspecciones',
+    titulo: 'Inspecciones',
+    subtitulo: 'Seguro de Auto · veredicto pericial',
+    Icono: IcoInspeccion,
     visible: puedeVender,
     grupo: 'Operación',
   },

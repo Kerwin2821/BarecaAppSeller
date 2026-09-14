@@ -25,6 +25,7 @@ import { PasoCliente, type DatosCliente } from './PasoCliente'
 import { useToast } from './Toast'
 import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
+import { useRouter } from 'expo-router'
 
 const BANCOS: OpcionDrop[] = [
   { valor: '0169', texto: '0169 — Mi Banco' },
@@ -47,10 +48,12 @@ type TipoSeguro = 'rcv' | 'funerario'
 const PASOS = ['Cotización', 'Datos del Cliente', 'Conductor', 'Registro de Pago']
 
 /** Tarjetas de tipo de seguro (solo RCV activo; el resto "Próximamente"). */
-const TIPOS: { valor: TipoSeguro | null; emoji: string; texto: string; activo: boolean }[] = [
+const TIPOS: { valor: TipoSeguro | null; emoji: string; texto: string; activo: boolean; ruta?: string }[] = [
   { valor: 'rcv', emoji: '🚗', texto: 'Vehículos (RCV)', activo: true },
+  // A Tu Alcance tiene su propio asistente (3 pasos + cobro semanal): se navega a él.
+  { valor: null, emoji: '💚', texto: 'A Tu Alcance', activo: true, ruta: '/atualcance' },
   { valor: 'funerario', emoji: '🕊️', texto: 'Servicio Funerario', activo: false },
-  { valor: null, emoji: '🚙', texto: 'Auto (Casco)', activo: false },
+  { valor: null, emoji: '🚙', texto: 'Seguro de Auto', activo: false },
   { valor: null, emoji: '❤️', texto: 'Salud y Vida', activo: false },
   { valor: null, emoji: '🏠', texto: 'Hogar y Comercio', activo: false },
 ]
@@ -113,6 +116,7 @@ function bsDePlan(plan: any): number {
  */
 export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
   const insets = useSafeAreaInsets()
+  const router = useRouter()
   const [paso, setPaso] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
   const refCotizar = useRef<View>(null)
@@ -591,6 +595,7 @@ export function NuevaVentaWizard({ express = false }: { express?: boolean }) {
                     key={i}
                     disabled={!t.activo}
                     onPress={() => {
+                      if (t.ruta) { router.navigate(t.ruta as never); return }
                       setTipo(t.valor)
                       setProductoId(null)
                       setClaseId(null)
