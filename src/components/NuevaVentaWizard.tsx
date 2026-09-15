@@ -26,6 +26,7 @@ import { useToast } from './Toast'
 import { Alerta, Boton, Campo, Pildora, Tarjeta } from './Ui'
 import { color } from '../lib/tema'
 import { useRouter } from 'expo-router'
+import { ATUALCANCE_HABILITADO } from '../lib/productos'
 
 const BANCOS: OpcionDrop[] = [
   { valor: '0169', texto: '0169 — Mi Banco' },
@@ -51,7 +52,7 @@ const PASOS = ['Cotización', 'Datos del Cliente', 'Conductor', 'Registro de Pag
 const TIPOS: { valor: TipoSeguro | null; emoji: string; texto: string; activo: boolean; ruta?: string }[] = [
   { valor: 'rcv', emoji: '🚗', texto: 'Vehículos (RCV)', activo: true },
   // A Tu Alcance tiene su propio asistente (3 pasos + cobro semanal): se navega a él.
-  { valor: null, emoji: '💚', texto: 'A Tu Alcance', activo: true, ruta: '/atualcance' },
+  { valor: null, emoji: '💚', texto: 'A Tu Alcance', activo: ATUALCANCE_HABILITADO, ruta: '/atualcance' },
   { valor: 'funerario', emoji: '🕊️', texto: 'Servicio Funerario', activo: false },
   { valor: null, emoji: '🚙', texto: 'Seguro de Auto', activo: false },
   { valor: null, emoji: '❤️', texto: 'Salud y Vida', activo: false },

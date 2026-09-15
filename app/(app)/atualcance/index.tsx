@@ -4,18 +4,24 @@ import { useAuth } from '@/lib/auth'
 import { ATA_PASOS, useAtaWizard } from '@/lib/atualcance'
 import { Pantalla, CabeceraPantalla } from '@/components/Pantalla'
 import { CargandoBloque, EstadoError } from '@/components/Estados'
-import { Alerta, Boton } from '@/components/Ui'
+import { Alerta, Boton, Tarjeta } from '@/components/Ui'
 import { AtaSolicitud } from '@/components/ata/AtaSolicitud'
 import { AtaExpediente } from '@/components/ata/AtaExpediente'
 import { AtaResumen } from '@/components/ata/AtaResumen'
 import { AtaCobro } from '@/components/ata/AtaCobro'
 import { color } from '@/lib/tema'
+import { ATUALCANCE_HABILITADO } from '@/lib/productos'
 
 /**
  * Venta de A TU ALCANCE (medicina prepagada · Latina Salud). Tres pasos y el
  * resultado con el cobro de la cuota 1 — misma estructura que el portal web.
  */
-export default function AtaVenta() {
+/** Ruta: el producto se muestra solo donde está habilitado (flag de entorno, como la web). */
+export default function AtaVentaRoute() {
+  return ATUALCANCE_HABILITADO ? <AtaVenta /> : <Proximamente />
+}
+
+function AtaVenta() {
   const { user } = useAuth()
   const router = useRouter()
   const w = useAtaWizard(user)
@@ -96,3 +102,19 @@ const est = StyleSheet.create({
   faltanTitulo: { fontSize: 12.5, fontWeight: '800', color: '#8A5A00' },
   faltanItem: { fontSize: 12, color: '#6B4A00' },
 })
+
+/** El producto aún no está activo en este entorno (mismo criterio que el portal web). */
+function Proximamente() {
+  return (
+    <Pantalla>
+      <CabeceraPantalla titulo="💚 A Tu Alcance" detalle="Medicina prepagada · Latina Salud" />
+      <Tarjeta style={{ padding: 22, alignItems: 'center', gap: 8 }}>
+        <Text style={{ fontSize: 34 }}>🚀</Text>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: color.primary }}>Próximamente</Text>
+        <Text style={{ fontSize: 12.5, color: color.text3, textAlign: 'center', lineHeight: 18 }}>
+          Este producto se habilitará muy pronto para tu red. Mientras tanto puedes seguir vendiendo RCV.
+        </Text>
+      </Tarjeta>
+    </Pantalla>
+  )
+}

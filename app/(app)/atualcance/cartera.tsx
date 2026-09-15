@@ -12,6 +12,7 @@ import { Alerta, Boton, Campo, Pildora, Tarjeta } from '@/components/Ui'
 import { Modal } from '@/components/Modal'
 import { useToast } from '@/components/Toast'
 import { color } from '@/lib/tema'
+import { ATUALCANCE_HABILITADO } from '@/lib/productos'
 
 /**
  * Cartera de A TU ALCANCE: los contratos del vendedor con su estado de cobranza, y el
@@ -24,7 +25,12 @@ const ESTADO_COLOR: Record<string, string> = { VIGENTE: color.success, SUSPENDID
 const ESTADO_CUOTA_COLOR: Record<string, string> = { PAGADA: color.success, VENCIDA: color.danger, EN_MORA: color.danger, PENDIENTE: color.warning, ANULADA: color.text4 }
 const fechaCorta = (iso?: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—')
 
-export default function AtaCartera() {
+/** Ruta: la cobranza se muestra solo donde el producto está habilitado (flag de entorno, como la web). */
+export default function AtaCarteraRoute() {
+  return ATUALCANCE_HABILITADO ? <AtaCartera /> : <Proximamente />
+}
+
+function AtaCartera() {
   const { user } = useAuth()
   const { avisar } = useToast()
   const [filtro, setFiltro] = useState<'' | 'VIGENTE' | 'SUSPENDIDO' | 'ANULADO'>('')
@@ -223,3 +229,19 @@ const est = StyleSheet.create({
   metodoOn: { backgroundColor: color.primary, borderColor: color.primary },
   metodoTxt: { fontSize: 12, fontWeight: '800', color: color.text2 },
 })
+
+/** El producto aún no está activo en este entorno (mismo criterio que el portal web). */
+function Proximamente() {
+  return (
+    <Pantalla>
+      <CabeceraPantalla titulo="💚 Cobranza A Tu Alcance" detalle="Medicina prepagada · Latina Salud" />
+      <Tarjeta style={{ padding: 22, alignItems: 'center', gap: 8 }}>
+        <Text style={{ fontSize: 34 }}>🚀</Text>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: color.primary }}>Próximamente</Text>
+        <Text style={{ fontSize: 12.5, color: color.text3, textAlign: 'center', lineHeight: 18 }}>
+          Este producto se habilitará muy pronto para tu red. Mientras tanto puedes seguir vendiendo RCV.
+        </Text>
+      </Tarjeta>
+    </Pantalla>
+  )
+}

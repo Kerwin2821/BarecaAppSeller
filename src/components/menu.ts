@@ -7,6 +7,7 @@ import {
   puedeVerReportes,
   puedeVerRetos,
 } from '../lib/roles'
+import { ATUALCANCE_HABILITADO } from '../lib/productos'
 import {
   IcoChat,
   IcoComisiones,
@@ -56,7 +57,7 @@ export const MENU: ItemMenu[] = [
     titulo: 'A Tu Alcance',
     subtitulo: 'Medicina prepagada · Latina Salud',
     Icono: IcoSalud,
-    visible: puedeVender,
+    visible: (rol) => ATUALCANCE_HABILITADO && puedeVender(rol),
     grupo: 'Operación',
   },
   {
@@ -64,7 +65,7 @@ export const MENU: ItemMenu[] = [
     titulo: 'Cobranza A Tu Alcance',
     subtitulo: 'Contratos y cuotas',
     Icono: IcoCobranza,
-    visible: puedeVender,
+    visible: (rol) => ATUALCANCE_HABILITADO && puedeVender(rol),
     grupo: 'Operación',
   },
   {

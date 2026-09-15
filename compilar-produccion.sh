@@ -30,7 +30,7 @@ fi
 
 # ── 3. .env.local no debe pisar la configuración de producción
 #      (en Expo, .env.local tiene más prioridad que .env.production)
-if [ -f .env.local ] && grep -qE "^EXPO_PUBLIC_(BFF_URL|MONTO_REAL|PORTAL_CLIENTE_URL)=" .env.local; then
+if [ -f .env.local ] && grep -qE "^EXPO_PUBLIC_(BFF_URL|MONTO_REAL|PORTAL_CLIENTE_URL|ATUALCANCE_HABILITADO)=" .env.local; then
   rojo ".env.local define BFF_URL / MONTO_REAL / PORTAL_CLIENTE_URL y TIENE PRIORIDAD sobre .env.production."
   echo  "   Quita esas líneas de .env.local o el APK saldrá apuntando a QA."
   exit 1
@@ -41,7 +41,7 @@ echo ""
 rojo  "╔══════════════════════════════════════════════════════════╗"
 rojo  "║   APK DE PRODUCCIÓN — COBRA DINERO REAL AL CLIENTE       ║"
 rojo  "╚══════════════════════════════════════════════════════════╝"
-grep -E "BFF_URL|MONTO_REAL|PORTAL_CLIENTE" .env.production | sed 's/^/   /'
+grep -E "BFF_URL|MONTO_REAL|PORTAL_CLIENTE|ATUALCANCE" .env.production | sed 's/^/   /'
 echo ""
 read -r -p "Escribe PRODUCCION para continuar: " ok
 [ "$ok" = "PRODUCCION" ] || { echo "Cancelado."; exit 1; }
