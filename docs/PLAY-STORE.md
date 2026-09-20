@@ -1,0 +1,60 @@
+# Publicar en Google Play — BARECA Vendedores
+
+Cuenta de desarrollador: **kerwin2821@gmail.com** · Firebase (push/chat): **cerdkingtech2821@gmail.com**
+Paquete: `com.bareca.vendedores`
+
+## Lo que ya está hecho en el proyecto
+
+| Pieza | Dónde |
+|---|---|
+| Llave de subida (upload key) | `android/app/bareca-upload.keystore` + `android/keystore.properties` (**no versionados**). Respaldo: `~/Downloads/bareca-upload-key/` → guardar en gestor de contraseñas |
+| Firma de release con esa llave | `android/app/build.gradle` (si no existe `keystore.properties`, firma con debug como antes → QA no cambia) |
+| Generador del AAB | `./compilar-playstore.sh [--bump]` — producción, verifica firma y URLs dentro del bundle, deja `~/Downloads/BarecaVendedores-PLAYSTORE-v<ver>-<code>.aab` |
+| Kit de la ficha | `~/Downloads/bareca-playstore-kit/`: icono 512, gráfico destacado, textos, política de privacidad, respuestas de «Seguridad de datos» |
+
+⚠️ Los APK anteriores iban firmados con la llave de **debug**. El AAB de Play va con la llave de subida: un usuario con el APK viejo instalado **no podrá actualizar desde Play** sin desinstalar (firma distinta). Es normal en la primera publicación.
+
+## Versionado
+Cada subida a Play necesita un `versionCode` mayor. `./compilar-playstore.sh --bump` lo incrementa en `android/app/build.gradle`; el `versionName` se toma de `app.json` (`expo.version`).
+
+## Pasos en Play Console (los hace el dueño de la cuenta)
+
+1. **Cuenta de desarrollador** en https://play.google.com/console con kerwin2821@gmail.com (pago único de USD 25 + verificación de identidad).
+   - **Recomendado registrarla como ORGANIZACIÓN (Bareca C.A.)**, no personal: las cuentas personales nuevas deben hacer una **prueba cerrada con 12 testers durante 14 días** antes de poder publicar en producción. La de organización no tiene ese requisito (pide D-U-N-S y verificación de la empresa).
+2. **Crear la app**: nombre «BARECA Vendedores», app, gratis, idioma español (Venezuela).
+3. **Configuración de la app** (panel «Configura tu app»): política de privacidad (URL pública, ver kit), acceso a la app (**usuario y clave de prueba de PRODUCCIÓN para los revisores** — sin eso Google rechaza), anuncios (no), clasificación de contenido (cuestionario), público objetivo (18+), seguridad de los datos (respuestas en el kit), categoría Finanzas, datos de contacto.
+4. **Ficha de la tienda**: textos, icono 512, gráfico 1024×500 y 2–8 capturas 9:16 (kit).
+5. **Firma de apps de Play**: al subir el primer AAB, aceptar que Google gestione la clave de firma; la llave de subida se registra sola.
+6. **Subir el AAB**: Prueba interna → Producción, o directamente Producción.
+
+## «Sincronizar con Claude»: subir versiones desde aquí sin entrar a la consola
+
+Con una **cuenta de servicio** de Google, Claude puede subir cada AAB con `eas submit` (la CLI de Expo ya está autenticada como `cerdkingtech2821`):
+
+1. En Play Console → **Usuarios y permisos → Invitar usuarios / Cuentas de servicio** (o Google Cloud → IAM → Cuentas de servicio del proyecto vinculado): crear `play-publisher@…`, crear **clave JSON** y descargarla.
+2. En Play Console darle a esa cuenta el permiso **«Administrador de versiones»** sobre la app.
+3. Guardar el JSON como `android/play-service-account.json` (ya ignorado por git) o pasárselo a Claude.
+4. Subir: `npx eas submit -p android --path ~/Downloads/BarecaVendedores-PLAYSTORE-v1.0.0-1.aab --key android/play-service-account.json --track internal`
+   (`--track production` cuando toque). La **primera** subida de una app nueva debe hacerse a mano en la consola; las siguientes ya pueden ir por API.
+
+## Firebase (notificaciones push y chat)
+
+Hoy el app usa **dos proyectos**:
+
+| Uso | Proyecto | Archivo |
+|---|---|---|
+| **Push (FCM)** — token del dispositivo que el panel administrativo usa para enviar | `bareca-2b2da` | `google-services.json` |
+| **Chat de soporte (Firestore)** — compartido con el portal web y el admin | `bareca-d9254` | `.env` → `EXPO_PUBLIC_FIREBASE_*` |
+
+Para que todo esté en **cerdkingtech2821@gmail.com**:
+- Confirmar en https://console.firebase.google.com que **`bareca-2b2da`** está en esa cuenta. Si no: crear el proyecto ahí, añadir app Android `com.bareca.vendedores`, descargar `google-services.json` y reemplazar el del repo (raíz y `android/app/`). Habilitar **Cloud Messaging API (V1)**.
+- El **panel administrativo** que envía las notificaciones debe usar las credenciales del **mismo** proyecto que `google-services.json`; si no, el token se registra pero los pushes no llegan.
+- El **chat** debe seguir en el mismo proyecto que el admin y la web (`bareca-d9254`); moverlo solo en el app rompería el soporte. Si ese proyecto no está en la cuenta deseada, hay que migrar los tres (web, admin y app) a la vez.
+
+## Antes de la primera publicación
+- [ ] Publicar la política de privacidad en una URL de bareca.com
+- [ ] Usuario de prueba de producción para los revisores de Google
+- [ ] Confirmar correo de soporte (soporte@bareca.com)
+- [ ] Capturas de pantalla (2–8)
+- [ ] Decidir cuenta de organización vs personal
+- [ ] Quitar `RECORD_AUDIO` si el chat no usa notas de voz (menos preguntas en la revisión)

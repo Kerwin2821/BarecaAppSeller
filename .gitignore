@@ -34,3 +34,9 @@ yarn-error.*
 # Firebase (config del cliente, se provee local; no se versiona)
 google-services.json
 GoogleService-Info.plist
+
+# Llave de subida a Google Play (respaldo fuera del repo)
+android/keystore.properties
+android/app/*.keystore
+!android/app/debug.keystore
+android/play-service-account.json
