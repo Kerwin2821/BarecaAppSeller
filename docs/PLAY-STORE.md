@@ -83,10 +83,13 @@ migra de una a otra desinstalando primero.
 
 ## Estado en Play Console (21-sep-2026)
 
-Hecho: ficha (textos, borrador), categoría y contacto, política de privacidad, anuncios, clasificación IARC (PEGI 3),
-apps gubernamentales, funciones financieras (seguros), seguridad de los datos (importada desde `docs/play/data_safety.csv`,
-guardada como borrador).
+Hecho: ficha completa (textos, icono 512, gráfico destacado y 4 capturas 1080×1920 en teléfono y tablets 7"/10",
+tomadas del emulador: login + 3 pantallas de la introducción; están en `~/Downloads/bareca-playstore-kit/capturas/`),
+categoría Finanzas y contacto (soporte@bareca.com / www.bareca.com — **confirmar el correo**), política de privacidad,
+anuncios, clasificación IARC (PEGI 3), apps gubernamentales, funciones financieras (seguros), salud (sin funciones),
+seguridad de los datos (importada desde `docs/play/data_safety.csv`, guardada como borrador).
 
 Pendiente del dueño de la cuenta: **Datos de inicio de sesión** (usuario y clave de prueba de PRODUCCIÓN; bloquea
-«Audiencia objetivo», que a su vez bloquea el envío definitivo de «Seguridad de los datos»), subir el AAB, icono,
-gráfico destacado y capturas, y enviar a revisión.
+«Audiencia objetivo», que a su vez bloquea el envío definitivo de «Seguridad de los datos»), subir el AAB
+(`~/Downloads/BarecaVendedores-PLAYSTORE-v1.0.0-1.aab`) en Producción o Prueba cerrada, y enviar a revisión desde
+«Resumen de publicación».
