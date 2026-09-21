@@ -39,17 +39,28 @@ Con una **cuenta de servicio** de Google, Claude puede subir cada AAB con `eas s
 
 ## Firebase (notificaciones push y chat)
 
-Hoy el app usa **dos proyectos**:
+| Uso | Proyecto | Cuenta | Archivo |
+|---|---|---|---|
+| **Push (FCM)** | **`bareca-vendedores`** (nº 87979179973) — creado el 21-sep-2026 | **kerwin2821@gmail.com** | `google-services.json` (raíz y `android/app/`, no versionado) |
+| Chat de soporte (Firestore), compartido con web y admin | `bareca-d9254` | equipo web | `.env` → `EXPO_PUBLIC_FIREBASE_*` |
 
-| Uso | Proyecto | Archivo |
+- Cloud Messaging **API V1: habilitada**; la API heredada está deshabilitada (correcto).
+- ⚠️ **El panel administrativo que envía los pushes debe cambiar a este proyecto**: necesita una clave de
+  cuenta de servicio de `bareca-vendedores` (Firebase → Configuración → Cuentas de servicio → Generar clave)
+  y enviar por la API HTTP v1. Mientras siga apuntando a `bareca-2b2da`, los tokens se registran pero **no llega
+  ninguna notificación**.
+- El proyecto anterior `bareca-2b2da` (cuenta cerdkingtech2821) queda sin uso por el app.
+- El **chat** no se toca: moverlo solo en el app rompería el soporte (web, admin y app deben ir juntos).
+
+## Firmas: dos flujos distintos
+
+| Artefacto | Firma | Por qué |
 |---|---|---|
-| **Push (FCM)** — token del dispositivo que el panel administrativo usa para enviar | `bareca-2b2da` | `google-services.json` |
-| **Chat de soporte (Firestore)** — compartido con el portal web y el admin | `bareca-d9254` | `.env` → `EXPO_PUBLIC_FIREBASE_*` |
+| APK por WhatsApp (`compilar-produccion.sh`) | **debug** (la de siempre, `-PfirmaDebug=true`) | Actualiza sobre lo ya instalado sin desinstalar |
+| AAB para Play (`compilar-playstore.sh`) | **llave de subida** `bareca-upload` | Requisito de Play; Google re-firma con su clave de apps |
 
-Para que todo esté en **cerdkingtech2821@gmail.com**:
-- Confirmar en https://console.firebase.google.com que **`bareca-2b2da`** está en esa cuenta. Si no: crear el proyecto ahí, añadir app Android `com.bareca.vendedores`, descargar `google-services.json` y reemplazar el del repo (raíz y `android/app/`). Habilitar **Cloud Messaging API (V1)**.
-- El **panel administrativo** que envía las notificaciones debe usar las credenciales del **mismo** proyecto que `google-services.json`; si no, el token se registra pero los pushes no llegan.
-- El **chat** debe seguir en el mismo proyecto que el admin y la web (`bareca-d9254`); moverlo solo en el app rompería el soporte. Si ese proyecto no está en la cuenta deseada, hay que migrar los tres (web, admin y app) a la vez.
+Consecuencia: la versión de Play y la de WhatsApp **no se actualizan una sobre otra** (firmas distintas). Un vendedor
+migra de una a otra desinstalando primero.
 
 ## Antes de la primera publicación
 - [ ] Publicar la política de privacidad en una URL de bareca.com

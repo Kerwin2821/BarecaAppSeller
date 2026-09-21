@@ -59,7 +59,8 @@ rm -rf android/app/build/intermediates/assets/release
 rm -rf android/app/build/intermediates/merged_assets/release
 
 echo "Compilando… (log: $LOG)"
-./android/gradlew -p android assembleRelease --console=plain > "$LOG" 2>&1
+# -PfirmaDebug: el APK que se reparte por WhatsApp conserva la firma de siempre (compatible con lo instalado)
+./android/gradlew -p android assembleRelease -PfirmaDebug=true --console=plain > "$LOG" 2>&1
 
 grep -q "BUILD SUCCESSFUL" "$LOG" || { rojo "Falló la compilación. Revisa $LOG"; exit 1; }
 
