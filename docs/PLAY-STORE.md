@@ -22,7 +22,7 @@ Cada subida a Play necesita un `versionCode` mayor. `./compilar-playstore.sh --b
 1. **Cuenta de desarrollador** en https://play.google.com/console con kerwin2821@gmail.com (pago único de USD 25 + verificación de identidad).
    - **Recomendado registrarla como ORGANIZACIÓN (Bareca C.A.)**, no personal: las cuentas personales nuevas deben hacer una **prueba cerrada con 12 testers durante 14 días** antes de poder publicar en producción. La de organización no tiene ese requisito (pide D-U-N-S y verificación de la empresa).
 2. **Crear la app**: nombre «BARECA Vendedores», app, gratis, idioma español (Venezuela).
-3. **Configuración de la app** (panel «Configura tu app»): política de privacidad (URL pública, ver kit), acceso a la app (**usuario y clave de prueba de PRODUCCIÓN para los revisores** — sin eso Google rechaza), anuncios (no), clasificación de contenido (cuestionario), público objetivo (18+), seguridad de los datos (respuestas en el kit), categoría Finanzas, datos de contacto.
+3. **Configuración de la app** (panel «Configura tu app»): política de privacidad (`https://kerwin2821.github.io/BarecaAppSeller/privacidad-app.html`, publicada desde la rama `gh-pages` de este repo), acceso a la app (**usuario y clave de prueba de PRODUCCIÓN para los revisores** — sin eso Google rechaza), anuncios (no), clasificación de contenido (cuestionario), público objetivo (18+), seguridad de los datos (respuestas en el kit), categoría Finanzas, datos de contacto.
 4. **Ficha de la tienda**: textos, icono 512, gráfico 1024×500 y 2–8 capturas 9:16 (kit).
 5. **Firma de apps de Play**: al subir el primer AAB, aceptar que Google gestione la clave de firma; la llave de subida se registra sola.
 6. **Subir el AAB**: Prueba interna → Producción, o directamente Producción.
@@ -63,9 +63,30 @@ Consecuencia: la versión de Play y la de WhatsApp **no se actualizan una sobre 
 migra de una a otra desinstalando primero.
 
 ## Antes de la primera publicación
-- [ ] Publicar la política de privacidad en una URL de bareca.com
+- [x] Política de privacidad publicada en https://kerwin2821.github.io/BarecaAppSeller/privacidad-app.html (rama `gh-pages`). Si algún día se mueve a bareca.com, cambiar la URL en Play Console → «Política de privacidad» y en «Seguridad de los datos» (URL de eliminación de datos).
 - [ ] Usuario de prueba de producción para los revisores de Google
 - [ ] Confirmar correo de soporte (soporte@bareca.com)
 - [ ] Capturas de pantalla (2–8)
-- [ ] Decidir cuenta de organización vs personal
-- [ ] Quitar `RECORD_AUDIO` si el chat no usa notas de voz (menos preguntas en la revisión)
+- [x] App creada bajo la organización que ya tenía la cuenta (sin requisito de 12 testers)
+- [x] `RECORD_AUDIO` eliminado: `android.blockedPermissions` en `app.json` (lo aplica `expo prebuild`) + `tools:node="remove"` en `android/app/src/main/AndroidManifest.xml`. Verificar con `aapt2 dump permissions` (APK) o `unzip -p x.aab base/manifest/AndroidManifest.xml | strings | grep RECORD_AUDIO` (AAB).
+
+## La carpeta `android/` no está versionada
+
+`/android` está en `.gitignore`, así que estos ajustes viven solo en esta máquina y hay que reaplicarlos tras un
+`expo prebuild --clean` o en otra máquina:
+
+- `android/app/build.gradle`: bloque `signingConfigs.upload` leyendo `android/keystore.properties` (ver `compilar-playstore.sh`).
+- `android/keystore.properties` + `android/app/bareca-upload.keystore` (respaldo en `~/Downloads/bareca-upload-key/`).
+- `android/app/google-services.json` (proyecto Firebase `bareca-vendedores`).
+- `AndroidManifest.xml`: `xmlns:tools` + `<uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>`
+  (con `expo prebuild` lo genera solo a partir de `blockedPermissions` en `app.json`).
+
+## Estado en Play Console (21-sep-2026)
+
+Hecho: ficha (textos, borrador), categoría y contacto, política de privacidad, anuncios, clasificación IARC (PEGI 3),
+apps gubernamentales, funciones financieras (seguros), seguridad de los datos (importada desde `docs/play/data_safety.csv`,
+guardada como borrador).
+
+Pendiente del dueño de la cuenta: **Datos de inicio de sesión** (usuario y clave de prueba de PRODUCCIÓN; bloquea
+«Audiencia objetivo», que a su vez bloquea el envío definitivo de «Seguridad de los datos»), subir el AAB, icono,
+gráfico destacado y capturas, y enviar a revisión.
