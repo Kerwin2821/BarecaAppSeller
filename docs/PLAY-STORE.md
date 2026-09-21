@@ -83,13 +83,22 @@ migra de una a otra desinstalando primero.
 
 ## Estado en Play Console (21-sep-2026)
 
-Hecho: ficha completa (textos, icono 512, gráfico destacado y 4 capturas 1080×1920 en teléfono y tablets 7"/10",
-tomadas del emulador: login + 3 pantallas de la introducción; están en `~/Downloads/bareca-playstore-kit/capturas/`),
-categoría Finanzas y contacto (soporte@bareca.com / www.bareca.com — **confirmar el correo**), política de privacidad,
-anuncios, clasificación IARC (PEGI 3), apps gubernamentales, funciones financieras (seguros), salud (sin funciones),
-seguridad de los datos (importada desde `docs/play/data_safety.csv`, guardada como borrador).
+**Enviada a revisión** el 21-sep-2026: versión de producción `1 (1.0.0)` (AAB `BarecaVendedores-PLAYSTORE-v1.0.0-1.aab`,
+firma de apps de Play), país Venezuela, notas de la versión en es-419. La revisión de Google suele tardar hasta 7 días;
+el estado se sigue en «Resumen de publicación → Actividad de envíos». Publicación gestionada: desactivada (se publica
+sola al aprobarse).
 
-Pendiente del dueño de la cuenta: **Datos de inicio de sesión** (usuario y clave de prueba de PRODUCCIÓN; bloquea
-«Audiencia objetivo», que a su vez bloquea el envío definitivo de «Seguridad de los datos»), subir el AAB
-(`~/Downloads/BarecaVendedores-PLAYSTORE-v1.0.0-1.aab`) en Producción o Prueba cerrada, y enviar a revisión desde
-«Resumen de publicación».
+Declaraciones completadas: política de privacidad, datos de inicio de sesión (cuenta de prueba «Seller test account»
+= usuario vendedor de producción; la clave la tecleó el dueño), anuncios (no), clasificación IARC (PEGI 3), audiencia
+objetivo (18+), seguridad de los datos (desde `docs/play/data_safety.csv`), apps gubernamentales (no), funciones
+financieras (seguros), salud (sin funciones), ID de publicidad (no la usa; el AAB no declara `AD_ID`). Ficha completa
+(textos, icono, gráfico destacado, 4 capturas 1080×1920 en teléfono y tablets 7"/10" tomadas del emulador, en
+`~/Downloads/bareca-playstore-kit/capturas/`), categoría Finanzas y contacto soporte@bareca.com / www.bareca.com.
+
+Única advertencia de la versión: sin archivo de desofuscación (R8/ProGuard). Es informativa.
+
+### Próximas versiones
+1. `./compilar-playstore.sh --bump` (sube `versionCode`), verifica firma y URL de producción.
+2. Play Console → Producción → Crear nueva versión → arrastrar el AAB (78 MB; supera el límite de subida por navegador
+   de Claude) → notas de la versión → Siguiente → Guardar → Resumen de publicación → Enviar a revisión.
+3. Si el AAB pasa a declarar `AD_ID` (p.ej. por un SDK de analítica), cambiar la declaración de ID de publicidad a «Sí».
