@@ -2,7 +2,7 @@
   "expo": {
     "name": "BARECA Vendedores",
     "slug": "bareca-vendedores",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "barecavendedores",
@@ -14,8 +14,14 @@
       "backgroundColor": "#1B2470"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.bareca.vendedores"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.bareca.vendedores",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDevelopmentRegion": "es"
+      },
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "package": "com.bareca.vendedores",
@@ -43,13 +49,17 @@
         "expo-image-picker",
         {
           "photosPermission": "BARECA Vendedores usa tus fotos para leer la cédula y el carnet de circulación.",
-          "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación."
+          "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación.",
+          "microphonePermission": false
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "BARECA Vendedores usa tu ubicación para autoseleccionar el estado, municipio y ciudad del asegurado."
+          "locationWhenInUsePermission": "BARECA Vendedores usa tu ubicación para autoseleccionar el estado, municipio y ciudad del asegurado.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "isAndroidBackgroundLocationEnabled": false
         }
       ],
       [
@@ -59,14 +69,38 @@
         }
       ],
       "expo-font",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-camera",
         {
-          "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación."
+          "cameraPermission": "BARECA Vendedores usa la cámara para capturar la cédula y el carnet de circulación.",
+          "microphonePermission": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "BARECA Vendedores usa Face ID para desbloquear el app e iniciar sesión sin escribir la clave."
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
+      "./plugins/withFirebaseCocoaPods.js"
     ],
     "experiments": {
       "typedRoutes": false

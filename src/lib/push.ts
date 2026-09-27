@@ -15,8 +15,9 @@ import type { CurrentUser } from './tipos'
  *
  * ⚠️ Requiere un **development build** (o build de producción): Expo Go en
  * Android (SDK 54) ya no entrega tokens de push. En Expo Go esto falla en
- * silencio (no rompe el login). También hace falta `google-services.json` del
- * proyecto Firebase configurado en `app.json` (android.googleServicesFile).
+ * silencio (no rompe el login). También hace falta `google-services.json` (Android,
+ * android.googleServicesFile) y `GoogleService-Info.plist` (iOS, ios.googleServicesFile)
+ * del proyecto Firebase `bareca-vendedores`.
  */
 
 // Muestra las notificaciones aunque el app esté en primer plano.
@@ -37,6 +38,25 @@ try {
 let yaRegistrado = false
 let ultimoToken: string | null = null
 
+/**
+ * Token de registro FCM del dispositivo. En Android lo entrega expo-notifications
+ * (google-services.json). En iOS expo-notifications solo da el token APNs, que FCM
+ * no acepta, así que ahí usamos el SDK de Firebase (@react-native-firebase/messaging,
+ * enlazado solo en iOS: ver react-native.config.js) para obtener el token FCM real.
+ */
+async function tokenFcm(): Promise<string> {
+  if (Platform.OS === 'ios') {
+    // require perezoso: el módulo nativo no existe en Android.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fb = require('@react-native-firebase/messaging')
+    const m = fb.getMessaging()
+    if (!fb.isDeviceRegisteredForRemoteMessages(m)) await fb.registerDeviceForRemoteMessages(m)
+    return String((await fb.getToken(m)) ?? '')
+  }
+  const resp = await Notifications.getDevicePushTokenAsync()
+  return typeof resp?.data === 'string' ? resp.data : String(resp?.data ?? '')
+}
+
 /** Último token FCM obtenido en esta sesión (o null). */
 export function tokenPushActual(): string | null {
   return ultimoToken
@@ -54,8 +74,7 @@ export async function obtenerTokenPush(): Promise<string | null> {
     let concedido = actual.granted
     if (!concedido && actual.canAskAgain) concedido = (await Notifications.requestPermissionsAsync()).granted
     if (!concedido) return null
-    const resp = await Notifications.getDevicePushTokenAsync()
-    const token = typeof resp?.data === 'string' ? resp.data : String(resp?.data ?? '')
+    const token = await tokenFcm()
     ultimoToken = token || null
     return ultimoToken
   } catch {
@@ -90,9 +109,8 @@ export async function registrarPush(user: CurrentUser): Promise<string | null> {
       })
     }
 
-    // 3. Token nativo de push = token de registro FCM (Android) / APNs (iOS).
-    const resp = await Notifications.getDevicePushTokenAsync()
-    const token = typeof resp?.data === 'string' ? resp.data : String(resp?.data ?? '')
+    // 3. Token de registro FCM del dispositivo (Android: expo-notifications; iOS: SDK Firebase).
+    const token = await tokenFcm()
     if (!token) return null
 
     // 4. Guardar en el backend, asociado al usuario (no bloquea si falla).
