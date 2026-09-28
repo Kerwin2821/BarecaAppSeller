@@ -66,7 +66,7 @@ rojo  "║   BUILD PARA APP STORE — PRODUCCIÓN, DINERO REAL         ║"
 rojo  "╚══════════════════════════════════════════════════════════╝"
 grep -E "BFF_URL|MONTO_REAL|PORTAL_CLIENTE|ATUALCANCE" .env.production | sed 's/^/   /'
 echo "   versión $VN  ·  build $BN   (usa --bump para subir el número de build)"
-echo "   firma: $([ -n "${ASC_PROFILE_NAME:-}" ] && echo "manual · perfil «$ASC_PROFILE_NAME»" || echo automática)"
+echo "   firma: $([ -n "${ASC_PROFILE_NAME:-}" ] && echo "manual · perfil «${ASC_PROFILE_NAME}»" || echo automática)"
 echo "   equipo Apple: $TEAM_ID  ·  $([ "$SOLO_IPA" = 1 ] && echo 'solo genera el .ipa' || echo 'sube a App Store Connect')  ·  auth: $([ -n "${ASC_KEY_ID:-}" ] && echo "clave API $ASC_KEY_ID" || echo 'cuenta de Xcode')"
 echo ""
 read -r -p "Escribe APPSTORE para continuar: " ok
@@ -88,7 +88,7 @@ B="$APP/main.jsbundle"
 [ -f "$B" ] || { rojo "No aparece main.jsbundle en el archive"; exit 1; }
 grep -aq "qaasesores.barecaonline.com" "$B" && { rojo "El bundle contiene la URL de QA"; exit 1; }
 grep -aq "asesores.barecaonline.com" "$B" && verde "✅ El bundle apunta a PRODUCCIÓN" || { rojo "No aparece la URL de producción"; exit 1; }
-codesign -dv "$APP" 2>&1 | grep -q "TeamIdentifier=$TEAM_ID" && verde "✅ Firmado por el equipo $TEAM_ID" || { rojo "El app no está firmado por $TEAM_ID"; exit 1; }
+codesign -dvv "$APP" 2>&1 | grep -q "TeamIdentifier=$TEAM_ID" && verde "✅ Firmado por el equipo $TEAM_ID" || { rojo "El app no está firmado por $TEAM_ID"; exit 1; }
 /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$APP/Info.plist" >/dev/null 2>&1 && { rojo "El app pide micrófono (no debería)"; exit 1; }
 verde "✅ Versión $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"))"
 
