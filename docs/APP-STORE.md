@@ -25,7 +25,10 @@ y luego `(cd ios && pod install)`. Con este enlace lento, los artefactos precomp
 `RCT_TESTONLY_RNCORE_TARBALL_PATH`, `RCT_USE_LOCAL_RN_DEP` y `HERMES_ENGINE_TARBALL_PATH`.
 
 ## Hecho por API el 28-sep-2026
-Precio **gratis** (territorio base USA), disponibilidad **solo Venezuela**, 4 capturas 6,5" (1284×2778) en es-MX, perfil App Store.
+Precio **gratis** (territorio base USA), disponibilidad **solo Venezuela**, 4 capturas 6,5" (1284×2778) en es-MX, perfil App Store,
+**build 1.0.1 (1) subido a las 06:00 y asignado a la versión** (procesó en 2 min), datos de revisión (contacto +58 424 1934005,
+usuario demo, notas). Privacidad de la app publicada por web (13 tipos de datos). Falta solo la clave de la cuenta demo
+(la escribe el dueño en la web) y pulsar «Añadir a revisión».
 Lo que la API no cubre y se hizo/hace en la web: privacidad de la app (tipos de datos), notas de revisión, clasificación por edades.
 
 ## Ficha en App Store Connect (español latinoamericano)
