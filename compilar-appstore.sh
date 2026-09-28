@@ -4,8 +4,11 @@
 #  Uso:  ./compilar-appstore.sh [--bump] [--solo-ipa]
 #        --bump      incrementa ios.buildNumber en app.json (obligatorio en cada subida nueva)
 #        --solo-ipa  deja el .ipa en ~/Downloads sin subirlo (para Transporter)
-#  Requisito: Xcode con la cuenta Apple del equipo iniciada (Xcode → Ajustes → Cuentas);
-#  con eso Xcode registra el App ID, crea los perfiles y sube el build (-allowProvisioningUpdates).
+#  Requisito (una de dos):
+#    a) Xcode con la cuenta Apple del equipo iniciada (Xcode → Ajustes → Cuentas), o
+#    b) una clave de API de App Store Connect (rol Admin): el .p8 en ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
+#       y las variables ASC_KEY_ID y ASC_ISSUER_ID (por defecto se leen de ios/asc-api.env, ignorado en git).
+#  Con cualquiera de las dos, xcodebuild registra el App ID, crea perfiles y sube el build (-allowProvisioningUpdates).
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -20,6 +23,15 @@ PLIST="ios/$SCHEME/Info.plist"
 BUILD="build/ios"
 LOG="/tmp/bareca-build-ios.log"
 BUMP=0; SOLO_IPA=0
+[ -f ios/asc-api.env ] && . ios/asc-api.env || { [ -f "$HOME/.appstoreconnect/bareca-asc-api.env" ] && . "$HOME/.appstoreconnect/bareca-asc-api.env"; }
+AUTH=()
+if [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
+  KEYFILE="${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8}"
+  [ -f "$KEYFILE" ] || { rojo "Falta la clave de API $KEYFILE"; exit 1; }
+  AUTH=(-authenticationKeyPath "$KEYFILE" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+fi
+# La firma manual (perfil App Store, "Apple Distribution") está en el target de la app vía plugins/withManualSigning.js;
+# no se pasa por línea de comandos porque afectaría a los Pods.
 for a in "$@"; do case "$a" in --bump) BUMP=1;; --solo-ipa) SOLO_IPA=1;; *) rojo "Opción desconocida: $a"; exit 1;; esac; done
 
 # ── Requisitos (mismos guardas que Play)
@@ -54,7 +66,8 @@ rojo  "║   BUILD PARA APP STORE — PRODUCCIÓN, DINERO REAL         ║"
 rojo  "╚══════════════════════════════════════════════════════════╝"
 grep -E "BFF_URL|MONTO_REAL|PORTAL_CLIENTE|ATUALCANCE" .env.production | sed 's/^/   /'
 echo "   versión $VN  ·  build $BN   (usa --bump para subir el número de build)"
-echo "   equipo Apple: $TEAM_ID  ·  $([ "$SOLO_IPA" = 1 ] && echo 'solo genera el .ipa' || echo 'sube a App Store Connect')"
+echo "   firma: $([ -n "${ASC_PROFILE_NAME:-}" ] && echo "manual · perfil «$ASC_PROFILE_NAME»" || echo automática)"
+echo "   equipo Apple: $TEAM_ID  ·  $([ "$SOLO_IPA" = 1 ] && echo 'solo genera el .ipa' || echo 'sube a App Store Connect')  ·  auth: $([ -n "${ASC_KEY_ID:-}" ] && echo "clave API $ASC_KEY_ID" || echo 'cuenta de Xcode')"
 echo ""
 read -r -p "Escribe APPSTORE para continuar: " ok
 [ "$ok" = "APPSTORE" ] || { echo "Cancelado."; exit 1; }
@@ -65,8 +78,8 @@ rm -rf "$BUILD"; mkdir -p "$BUILD"
 ARCHIVE="$BUILD/$SCHEME.xcarchive"
 echo "Compilando (archive)… (log: $LOG)"
 xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath "$ARCHIVE" archive -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic > "$LOG" 2>&1 \
+  -archivePath "$ARCHIVE" archive -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} \
+  > "$LOG" 2>&1 \
   || { rojo "Falló el archive. Revisa $LOG"; grep -E "error:|No profiles|Provisioning|Signing" "$LOG" | head -10; exit 1; }
 
 # ── Verificaciones: config de producción, equipo de firma, sin micrófono
@@ -88,14 +101,15 @@ cat > "$BUILD/exportOptions.plist" <<PL
   <key>method</key><string>app-store-connect</string>
   <key>destination</key><string>$DESTINO</string>
   <key>teamID</key><string>$TEAM_ID</string>
-  <key>signingStyle</key><string>automatic</string>
+  <key>signingStyle</key><string>$([ -n "${ASC_PROFILE_NAME:-}" ] && echo manual || echo automatic)</string>
+$([ -n "${ASC_PROFILE_NAME:-}" ] && printf '  <key>signingCertificate</key><string>Apple Distribution</string>\n  <key>provisioningProfiles</key><dict><key>com.bareca.vendedores</key><string>%s</string></dict>\n' "$ASC_PROFILE_NAME")
   <key>uploadSymbols</key><true/>
   <key>manageAppVersionAndBuildNumber</key><false/>
 </dict></plist>
 PL
 echo "Exportando ($DESTINO)…"
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$BUILD/exportOptions.plist" \
-  -exportPath "$BUILD/export" -allowProvisioningUpdates >> "$LOG" 2>&1 \
+  -exportPath "$BUILD/export" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} >> "$LOG" 2>&1 \
   || { rojo "Falló el export/subida. Revisa $LOG"; grep -E "error:|Error|failed" "$LOG" | tail -8; exit 1; }
 
 if [ "$SOLO_IPA" = 1 ]; then

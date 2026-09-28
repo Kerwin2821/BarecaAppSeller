@@ -40,3 +40,9 @@ android/keystore.properties
 android/app/*.keystore
 !android/app/debug.keystore
 android/play-service-account.json
+
+# builds locales de iOS (archive/simulador)
+/build
+
+# clave de API de App Store Connect (secreto local)
+ios/asc-api.env

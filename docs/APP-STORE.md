@@ -6,7 +6,8 @@
 | App Store Connect | app **6816710888** — https://appstoreconnect.apple.com/apps/6816710888 · SKU `bareca-vendedores-ios` · idioma principal Español (México) |
 | Clave APNs | Key ID **6Q2B7DH922**, Team `8VJKP5NFUM`, Sandbox & Production, team-scoped. Respaldo (secreto) en `~/Downloads/bareca-apns-key/` |
 | Equipo Apple | **CC CONSULTING INTERNATIONAL LLC** (`8VJKP5NFUM`, el mismo de Rueda Seguros) |
-| Firma | Automática con la cuenta Apple iniciada en Xcode (Ajustes → Cuentas); `compilar-appstore.sh` registra el App ID, crea perfiles y sube el build |
+| Firma | **Manual** en el target de la app (`plugins/withManualSigning.js`): certificado «Apple Distribution: CC CONSULTING INTERNATIONAL LLC» (llavero de esta Mac, serie `4CB2E813…`, vence 26-sep-2027) + perfil **«BARECA Vendedores App Store»** (creado por API el 28-sep-2026, respaldo en `~/Downloads/bareca-ios-signing/`). La firma automática no sirve: la cuenta no tiene dispositivos y Xcode exige un perfil de desarrollo para el archive |
+| Clave de API ASC | `R39LQ62973` (issuer `721a93be-082c-4138-b284-b4fd728cefc2`, rol Admin, «Bareca Vendedores CI»). `.p8` en `~/.appstoreconnect/private_keys/` y respaldo en `~/Downloads/bareca-asc-api-key/`. `compilar-appstore.sh` la lee de `ios/asc-api.env` o `~/.appstoreconnect/bareca-asc-api.env` (ambos fuera de git) y con ella sube el build sin cuenta en Xcode. `~/.appstoreconnect/asc.py` es un cliente mínimo de la API (JWT ES256 con openssl) usado para perfil, precio, disponibilidad y capturas |
 | Solo iPhone | `ios.supportsTablet: false` (sin capturas ni revisión de iPad; corre en iPad en modo compatibilidad) |
 | Push | FCM vía `@react-native-firebase/messaging` **solo en iOS** (`react-native.config.js`); Android sigue con expo-notifications. Requiere `GoogleService-Info.plist` (app iOS registrada en Firebase `bareca-vendedores`) y la **clave APNs** subida a Firebase |
 | Cifrado | `ITSAppUsesNonExemptEncryption = false` (solo HTTPS) |
@@ -22,6 +23,10 @@ La carpeta `ios/` no está versionada: se regenera con `npx expo prebuild --plat
 y luego `(cd ios && pod install)`. Con este enlace lento, los artefactos precompilados de React Native
 (≈300 MB en Maven) se bajan aparte y se pasan a `pod install` con
 `RCT_TESTONLY_RNCORE_TARBALL_PATH`, `RCT_USE_LOCAL_RN_DEP` y `HERMES_ENGINE_TARBALL_PATH`.
+
+## Hecho por API el 28-sep-2026
+Precio **gratis** (territorio base USA), disponibilidad **solo Venezuela**, 4 capturas 6,5" (1284×2778) en es-MX, perfil App Store.
+Lo que la API no cubre y se hizo/hace en la web: privacidad de la app (tipos de datos), notas de revisión, clasificación por edades.
 
 ## Ficha en App Store Connect (español latinoamericano)
 

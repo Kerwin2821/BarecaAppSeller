@@ -100,7 +100,8 @@
           }
         }
       ],
-      "./plugins/withFirebaseCocoaPods.js"
+      "./plugins/withFirebaseCocoaPods.js",
+      "./plugins/withManualSigning.js"
     ],
     "experiments": {
       "typedRoutes": false
